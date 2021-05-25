@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 
 	ParentVesselReconstruction pvr;
 	pvr.SetSourceFilePath(args.at(0));
-	pvr.SetOutputFilePath(args.at(1));
+	pvr.SetCenterlineFilePath(args.at(1));
 	pvr.Run();
 
 	return app.exec();

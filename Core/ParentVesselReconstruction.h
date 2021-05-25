@@ -8,6 +8,7 @@
 // vtk
 #include "vtkPolyData.h"
 #include "vtkSmartPointer.h"
+#include <vtkSphereSource.h>
 
 class ParentVesselReconstruction : public QObject
 {
@@ -18,6 +19,7 @@ public:
 	~ParentVesselReconstruction();
 
 	void SetSourceFilePath(QString);
+	void SetCenterlineFilePath(QString);
 	void SetOutputFilePath(QString);
 	void Run();
 
@@ -25,13 +27,14 @@ private:
 	void SeedPicker();
 	
 	QFileInfo m_sourceFile;
+	QFileInfo m_centerlineFile;
 	QFileInfo m_outputFile;
 
 	vtkSmartPointer<vtkPolyData> m_source = vtkSmartPointer<vtkPolyData>::New() ;
 	vtkSmartPointer<vtkPolyData> m_centerline = vtkSmartPointer<vtkPolyData>::New();
 	vtkSmartPointer<vtkPolyData> m_clipped_centerline = vtkSmartPointer<vtkPolyData>::New();
 
-
+	vtkSmartPointer<vtkSphereSource > m_sphere = vtkSmartPointer<vtkSphereSource>::New();
 };
 
 #endif

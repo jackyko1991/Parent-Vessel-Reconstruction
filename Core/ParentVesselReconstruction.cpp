@@ -14,15 +14,23 @@
 #include "vtkRenderer.h"
 #include "vtkRenderWindow.h"
 #include "vtkRenderWindowInteractor.h"
+#include "vtkXMLPolyDataWriter.h"
+#include "vtkPolyDataNormals.h"
+#include "vtkDelaunay3D.h"
+#include "vtkSplineFilter.h"
 
 // vmtk
 #include "vtkvmtkCapPolyData.h"
+#include "vtkvmtkInternalTetrahedraExtractor.h"
+#include "vtkvmtkVoronoiDiagram3D.h"
+#include "vtkvmtkSimplifyVoronoiDiagram.h"
 
 // me
-#include "interactorStyleCenterline.h"
+#include "interactorStylePickCenterline.h"
 
 ParentVesselReconstruction::ParentVesselReconstruction(QObject* parent)
 {
+	
 }
 
 ParentVesselReconstruction::~ParentVesselReconstruction()
@@ -33,6 +41,11 @@ ParentVesselReconstruction::~ParentVesselReconstruction()
 void ParentVesselReconstruction::SetSourceFilePath(QString path)
 {
 	m_sourceFile.setFile(path);
+}
+
+void ParentVesselReconstruction::SetCenterlineFilePath(QString path)
+{
+	m_centerlineFile.setFile(path);
 }
 
 void ParentVesselReconstruction::SetOutputFilePath(QString path)
@@ -82,13 +95,32 @@ void ParentVesselReconstruction::Run()
 		return;
 	}
 
-	// capping
-	vtkSmartPointer<vtkvmtkCapPolyData> capper = vtkSmartPointer<vtkvmtkCapPolyData>::New();
-	capper->SetInputData(m_source);
-	capper->Update();
+	// read centerline
+	if (m_centerlineFile.suffix() == "vtp" || m_centerlineFile.suffix() == "VTP")
+	{
+		vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+		reader->SetFileName(m_centerlineFile.absoluteFilePath().toStdString().c_str());
+		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
+		reader->Update();
+		m_centerline->DeepCopy(reader->GetOutput());
+	}
+	else if (m_centerlineFile.suffix() == "vtk" || m_centerlineFile.suffix() == "VTK")
+	{
+		vtkSmartPointer<vtkPolyDataReader> reader = vtkSmartPointer<vtkPolyDataReader>::New();
+		reader->SetFileName(m_sourceFile.absoluteFilePath().toStdString().c_str());
+		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
+		m_centerline->DeepCopy(reader->GetOutput());
+	}
+	else
+	{
+		std::cerr << "Invalid centerline data type, only accept VTP or VTK files" << std::endl;
+		return;
+	}
 
+	std::cout << "capping input surface..." << std::endl;
+	// capping
 	vtkSmartPointer<vtkCleanPolyData> cleaner = vtkSmartPointer<vtkCleanPolyData>::New();
-	cleaner->SetInputData(capper->GetOutput());
+	cleaner->SetInputData(m_source);
 	cleaner->Update();
 
 	vtkSmartPointer<vtkTriangleFilter> triangulator = vtkSmartPointer<vtkTriangleFilter>::New();
@@ -99,6 +131,81 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
+	//vtkSmartPointer<vtkvmtkCapPolyData> capper = vtkSmartPointer<vtkvmtkCapPolyData>::New();
+	//capper->SetInputData(triangulator->GetOutput());
+	//capper->Update();
+
+	//vtkSmartPointer<vtkPolyDataNormals> surfaceNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
+	//surfaceNormals->SetInputData(capper->GetOutput());
+	//surfaceNormals->SplittingOff();
+	//surfaceNormals->AutoOrientNormalsOn();
+	//surfaceNormals->SetFlipNormals(false);
+	//surfaceNormals->ComputePointNormalsOn();
+	//surfaceNormals->ConsistencyOn();
+	//surfaceNormals->Update();
+
+	//std::cout << "performing delaunay tesselation..." << std::endl;
+
+	//vtkSmartPointer<vtkUnstructuredGrid> delaunayTessellation = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+	//vtkSmartPointer<vtkDelaunay3D> delaunayTessellator = vtkSmartPointer<vtkDelaunay3D>::New();
+	//delaunayTessellator->CreateDefaultLocator();
+	//delaunayTessellator->SetInputConnection(surfaceNormals->GetOutputPort());
+	//delaunayTessellator->SetTolerance(0.001);
+	//delaunayTessellator->Update();
+	//delaunayTessellation->DeepCopy(delaunayTessellator->GetOutput());
+
+	//vtkDataArray* normalsArray = surfaceNormals->GetOutput()->GetPointData()->GetNormals();
+	//delaunayTessellation->GetPointData()->AddArray(normalsArray);
+
+	//std::cout << "extracting internal tetrahedra..." << std::endl;
+
+	//vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor> internalTetrahedraExtractor = vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor>::New();
+	//internalTetrahedraExtractor->SetInputData(delaunayTessellation);
+	//internalTetrahedraExtractor->SetOutwardNormalsArrayName(normalsArray->GetName());
+	//internalTetrahedraExtractor->RemoveSubresolutionTetrahedraOn();
+	//internalTetrahedraExtractor->SetSubresolutionFactor(1.0);
+	//internalTetrahedraExtractor->SetSurface(surfaceNormals->GetOutput());
+
+	//if (capper->GetCapCenterIds()->GetNumberOfIds() > 0)
+	//{
+	//	internalTetrahedraExtractor->UseCapsOn();
+	//	internalTetrahedraExtractor->SetCapCenterIds(capper->GetCapCenterIds());
+	//	internalTetrahedraExtractor->Update();
+	//}
+
+	//delaunayTessellation->DeepCopy(internalTetrahedraExtractor->GetOutput());
+
+	//std::cout << "computing Voronoi diagram..." << std::endl;
+
+	//vtkSmartPointer<vtkvmtkVoronoiDiagram3D> voronoiDiagramFilter = vtkSmartPointer<vtkvmtkVoronoiDiagram3D>::New();
+	//voronoiDiagramFilter->SetInputData(delaunayTessellation);
+	//voronoiDiagramFilter->SetRadiusArrayName("MaximumInscribedSphereRadius");
+	//voronoiDiagramFilter->Update();
+
+	//std::cout << "simplifying Voronoi diagram..." << std::endl;
+
+	//vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram> voronoiDiagramSimplifier = vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram>::New();
+	//voronoiDiagramSimplifier->SetInputConnection(voronoiDiagramFilter->GetOutputPort());
+	//voronoiDiagramSimplifier->SetUnremovablePointIds(voronoiDiagramFilter->GetPoleIds());
+	//voronoiDiagramSimplifier->Update();
+
+	//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
+	//writer->SetInputData(voronoiDiagramSimplifier->GetOutput());
+	//writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/voronoi.vtp");
+	//writer->Write();
+
+	std::cout << "subdivide centerline..." << std::endl;
+	vtkSmartPointer<vtkSplineFilter> splineFilter = vtkSmartPointer<vtkSplineFilter>::New();
+	splineFilter->SetInputData(m_centerline);
+	splineFilter->SetSubdivideToLength();
+	splineFilter->SetLength(0.1);
+	splineFilter->Update();
+
+	m_centerline->DeepCopy(splineFilter->GetOutput());
+
+	std::cout << "picking clip center..." << std::endl;
+
 	this->SeedPicker();
 }
 
@@ -108,26 +215,41 @@ void ParentVesselReconstruction::SeedPicker()
 	surfaceMapper->SetInputData(m_source);
 	vtkSmartPointer<vtkActor> surfaceActor = vtkSmartPointer<vtkActor>::New();
 	surfaceActor->SetMapper(surfaceMapper);
+	surfaceActor->GetProperty()->SetOpacity(0.3);
 
 	vtkSmartPointer<vtkPolyDataMapper> centerlineMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 	centerlineMapper->SetInputData(m_centerline);
+	centerlineMapper->SetScalarVisibility(false);
 	vtkSmartPointer<vtkActor> centerlineActor = vtkSmartPointer<vtkActor>::New();
 	centerlineActor->SetMapper(centerlineMapper);
+
+	// Create a sphere
+	m_sphere->SetCenter(m_centerline->GetPoint(0));
+	m_sphere->SetRadius(0.5);
+
+	vtkSmartPointer<vtkPolyDataMapper> sphereMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+	sphereMapper->SetInputConnection(m_sphere->GetOutputPort());
+
+	vtkSmartPointer<vtkActor> sphereActor = vtkSmartPointer<vtkActor>::New();
+	sphereActor->SetMapper(sphereMapper);
+	sphereActor->GetProperty()->SetColor(1, 0, 0);
 
 	// put the actor into render window
 	vtkSmartPointer<vtkRenderer> ren = vtkSmartPointer<vtkRenderer>::New();
 	ren->AddActor(surfaceActor);
 	ren->AddActor(centerlineActor);
+	ren->AddActor(sphereActor);
 
 	vtkSmartPointer<vtkRenderWindow> renWin = vtkSmartPointer<vtkRenderWindow>::New();
 	renWin->AddRenderer(ren);
+	renWin->SetSize(1024, 768);
 
 	vtkSmartPointer<vtkRenderWindowInteractor> iren = vtkSmartPointer<vtkRenderWindowInteractor>::New();
-	vtkSmartPointer<MouseInteractorStyleCenterline> style = vtkSmartPointer<MouseInteractorStyleCenterline>::New();
-	iren->SetInteractorStyle(style);
+	vtkSmartPointer<MouseInteractorStylePickCenterline> style = vtkSmartPointer<MouseInteractorStylePickCenterline>::New();
 	iren->SetRenderWindow(renWin);
-	style->SetSurface(m_source);
+	iren->SetInteractorStyle(style);
 	style->SetCenterline(m_centerline);
+	style->SetSphere(m_sphere);
 
 	iren->Initialize();
 	renWin->Render();
