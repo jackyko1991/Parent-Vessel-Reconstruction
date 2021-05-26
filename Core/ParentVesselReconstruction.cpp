@@ -131,7 +131,7 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
-	//this->ComputeVoronoiDiagram();
+	this->ComputeVoronoiDiagram();
 
 	//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
 	//writer->SetInputData(voronoiDiagramSimplifier->GetOutput());

@@ -14,9 +14,12 @@
 #include "vtkGenericCell.h"
 #include "vtkCenterOfMass.h"
 #include "vtkGeometryFilter.h"
+#include "vtkConnectivityFilter.h"
+#include "vtkSphere.h"
 
 #include "vtkXMLPolyDataWriter.h"
 
+#include "vtkvmtkPolyBallLine.h"
 
 void MouseInteractorStylePickCenterline::OnKeyPress()
 {
@@ -246,7 +249,7 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 
 		m_centerline->DeepCopy(m_outputCenterline);
 		
-		//this->ClipVoronoiDiagram();
+		this->ClipVoronoiDiagram();
 
 		vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
 		writer->SetInputData(m_clippedCenterline);
@@ -415,21 +418,50 @@ void MouseInteractorStylePickCenterline::CreateClipPlaneActor(vtkUnstructuredGri
 
 void MouseInteractorStylePickCenterline::ClipVoronoiDiagram()
 {
+	//if (m_voronoiDiagram == NULL)
+	//	return;
+
 	vtkSmartPointer<vtkIntArray> maskArray = vtkSmartPointer<vtkIntArray>::New();
 	maskArray->SetNumberOfComponents(1);
 	maskArray->SetNumberOfTuples(m_voronoiDiagram->GetNumberOfPoints());
 	maskArray->FillComponent(0, 0);
 
 	// compute connectivity on clipped centerline
+	vtkSmartPointer<vtkConnectivityFilter> connectFilter = vtkSmartPointer<vtkConnectivityFilter>::New();
+	connectFilter->SetInputData(m_clippedCenterline);
+	connectFilter->SetExtractionModeToAllRegions();
+	connectFilter->Update();
 
-	// loop over all connected centerlines
-	//for (int i = 0; i < patchCenterline->GetCellData()->GetArray("CenterlineIds")->GetNumberOfTuples(); i++)
-	//{
-	//	vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
-	//	threshold->ThresholdBetween(i, i);
-	//	threshold->SetInputData(patchCenterline);
-	//	threshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "CenterlineIds");
-	//	threshold->Update();
+	// create implict function with spheres along clipped centerline
+	vtkSmartPointer<vtkvmtkPolyBallLine> tubeFunction = vtkSmartPointer<vtkvmtkPolyBallLine>::New();
+	tubeFunction->SetInput(m_clippedCenterline);
+	tubeFunction->SetPolyBallRadiusArrayName("Radius");
+
+	std::list<vtkSphere*> 
+
+	// loop through all independent patched centerlines
+	for (int i = 0; i < connectFilter->GetNumberOfExtractedRegions(); i++)
+	{
+		// threshold to get independent lines
+		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
+		threshold->ThresholdBetween(i, i);
+		threshold->SetInputData(connectFilter->GetOutput());
+		threshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "RegionId");
+		threshold->Update();
+
+		// get the end points
+		double* center0 = threshold->GetOutput()->GetPoint(0);
+		double* tangent0 = threshold->GetOutput()->GetPointData()->GetArray("FrenetTangent")->GetTuple(0);
+
+		double* center1 = threshold->GetOutput()->GetPoint(threshold->GetOutput()->GetNumberOfPoints()-1);
+		double* tangent1 = threshold->GetOutput()->GetPointData()->GetArray("FrenetTangent")->GetTuple(threshold->GetOutput()->GetNumberOfPoints() - 1);
+		// reverse tangent direction
+		tangent1[0] = -1.0*tangent1[0];
+		tangent1[1] = -1.0*tangent1[1];
+		tangent1[2] = -1.0*tangent1[2];
+	}
+
+
 
 	//	if (threshold->GetOutput()->GetNumberOfPoints() == 0)
 	//		continue;
