@@ -25,6 +25,7 @@ public:
 
 private:
 	void SeedPicker();
+	void ComputeVoronoiDiagram();
 	
 	QFileInfo m_sourceFile;
 	QFileInfo m_centerlineFile;
@@ -33,6 +34,8 @@ private:
 	vtkSmartPointer<vtkPolyData> m_source = vtkSmartPointer<vtkPolyData>::New() ;
 	vtkSmartPointer<vtkPolyData> m_centerline = vtkSmartPointer<vtkPolyData>::New();
 	vtkSmartPointer<vtkPolyData> m_clipped_centerline = vtkSmartPointer<vtkPolyData>::New();
+	vtkSmartPointer<vtkPolyData> m_voronoiDiagram = vtkSmartPointer<vtkPolyData>::New();
+
 
 	vtkSmartPointer<vtkSphereSource > m_sphere = vtkSmartPointer<vtkSphereSource>::New();
 };

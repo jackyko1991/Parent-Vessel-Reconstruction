@@ -7,6 +7,13 @@
 #include "vtkPlaneSource.h"
 #include "vtkDataArray.h"
 #include "vtkClipPolyData.h"
+#include "vtkAppendPolyData.h"
+#include "vtkParametricSpline.h"
+#include "vtkParametricFunctionSource.h"
+#include "vtkCleanPolyData.h"
+#include "vtkGenericCell.h"
+#include "vtkCenterOfMass.h"
+#include "vtkGeometryFilter.h"
 
 #include "vtkXMLPolyDataWriter.h"
 
@@ -50,7 +57,7 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 
 		m_normalized_centerline = (vtkPolyData*)converter->GetOutput();
 
-		this->PerformClip();
+		this->ClipPlaneUpdate();
 
 		//m_centerline->DeepCopy(converter->GetOutput());
 		//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
@@ -67,7 +74,7 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 		if (m_clipDistance < 999)
 		{
 			m_clipDistance += 1;
-			this->PerformClip();
+			this->ClipPlaneUpdate();
 		}
 	}
 	else if (key == "minus")
@@ -76,69 +83,176 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 		if (m_clipDistance - 1 > 0)
 		{
 			m_clipDistance -= 1;
-			this->PerformClip();
+			this->ClipPlaneUpdate();
 		}
 	}
 	else if (key == "Return")
 	{
-		//if (m_numOfSourceSeed == 0 && m_numOfTargetSeed==0)
-		//	cout << "Source/target seed not found" << endl;
-		//else if (m_numOfSourceSeed == 0 && m_numOfTargetSeed>0)
-		//	cout << "Source seed not found" << endl;
-		//else if (m_numOfSourceSeed > 0 && m_numOfTargetSeed==0)
-		//	cout << "Target seed not found" << endl;
-		//else if (m_currentSeedPosition[0] == 0 && m_currentSeedPosition[1] == 0 && m_currentSeedPosition[2] == 0)
-		//	cout << "Invalid seed position, cannot calculate centerline" << endl;
-		//else
-		//{
-		//	cout << "Centerline calculation in progress" << endl;
-		//	// Create the kd tree
-		//	vtkSmartPointer<vtkKdTreePointLocator> kDTree = vtkSmartPointer<vtkKdTreePointLocator>::New();
-		//	kDTree->SetDataSet(m_surface);
-		//	kDTree->BuildLocator();
+		// remove all clip plane actors
+		while (m_clipPlaneActorList.size() > 0)
+		{
+			this->GetCurrentRenderer()->RemoveActor(m_clipPlaneActorList.back().first);
+			this->GetCurrentRenderer()->RemoveActor(m_clipPlaneActorList.back().second);
+			m_clipPlaneActorList.pop_back();
+		}
 
-		//	vtkSmartPointer<vtkIdList> sourceIds = vtkSmartPointer<vtkIdList>::New();
-		//	sourceIds->SetNumberOfIds(m_numOfSourceSeed);
-		//	vtkSmartPointer<vtkIdList> targetIds = vtkSmartPointer<vtkIdList>::New();
-		//	targetIds->SetNumberOfIds(m_numOfTargetSeed);
+		// create new clipped centerline
+		if (m_clippedCenterline != NULL)
+		{
+			m_clippedCenterline->Delete();
+		}
+		if (m_clippedCenterline != NULL)
+		{
+			m_outputCenterline->Delete();
+		}
 
-		//	int _sourceSeedCount = 0;
-		//	int _targetSeedCount = 0;
+		m_clippedCenterline = vtkSmartPointer<vtkPolyData>::New();
+		m_outputCenterline = vtkSmartPointer<vtkPolyData>::New();
 
-		//	for (int i = 0; i < m_numOfSeeds; i++)
-		//	{
-		//		// Find the closest point ids to the seeds
-		//		//cout << seedList[i+1]->GetCenter()[0] << "," << seedList[i]->GetCenter()[1] << "," << seedList[i]->GetCenter()[2];
-		//		vtkIdType iD = kDTree->FindClosestPoint(seedList[i + 1]->GetCenter());
-		//		//std::cout << "The closest point is point " << iD << std::endl;
-		//		if (seedTypeList[i + 1] == 0)
-		//		{
-		//			sourceIds->SetId(_sourceSeedCount, iD);
-		//			_sourceSeedCount++;
-		//		}
-		//		else
-		//		{
-		//			targetIds->SetId(_targetSeedCount, iD);
-		//			_targetSeedCount++;
-		//		}
+		// threshold on normalized abscissas
+		double threshold_bound[2] = {
+			m_normalized_centerline->GetPointData()->GetArray("NormalizedAbscissas")->GetTuple(0)[0],
+			m_normalized_centerline->GetPointData()->GetArray("NormalizedAbscissas")->GetTuple(m_normalized_centerline->GetNumberOfPoints() - 1)[0] };
 
-		//		seedActorList[i + 1]->SetVisibility(0);
-		//	}
+		if (-1 * m_clipDistance > threshold_bound[0])
+		{
+			threshold_bound[0] = -1 * m_clipDistance;
+		}
 
-		//	Centerline* centerline = new Centerline;
-		//	centerline->SetCappedSurface(m_surface);
-		//	centerline->SetSourceIds(sourceIds);
-		//	centerline->SetTargetIds(targetIds);
-		//	centerline->SetAppendEndPoints(m_appendFlag);
-		//	centerline->Update();
+		if (m_clipDistance < threshold_bound[1])
+		{
+			threshold_bound[1] = m_clipDistance;
+		}
 
-		//	m_centerline->DeepCopy(centerline->GetCenterline());
+		m_normalized_centerline->GetPointData()->SetActiveScalars("NormalizedAbscissas");
 
-		//	// set surface opacity
-		//	vtkActor* actor = vtkActor::SafeDownCast(this->GetCurrentRenderer()->GetActors()->GetItemAsObject(0));
-		//	actor->GetProperty()->SetOpacity(0.5);
+		// loop over all centerlineids
+		for (int i = 0; i < m_normalized_centerline->GetCellData()->GetArray("CenterlineIds")->GetNumberOfTuples(); i++)
+		{
+			// threshold to get independent lines
+			vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
+			threshold->ThresholdBetween(i, i);
+			threshold->SetInputData(m_normalized_centerline);
+			threshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "CenterlineIds");
+			threshold->Update();
 
-		//}
+			// convert threshold output to vtkpolydata
+			vtkSmartPointer<vtkGeometryFilter> geometryFilter = vtkSmartPointer<vtkGeometryFilter> ::New();
+			geometryFilter->SetInputData(threshold->GetOutput());
+			geometryFilter->Update();
+
+			if (threshold->GetOutput()->GetNumberOfPoints() == 0)
+				continue;
+
+			vtkSmartPointer<vtkPolyData> singleCenterline = geometryFilter->GetOutput();
+			singleCenterline->GetPointData()->SetActiveScalars("NormalizedAbscissas");
+
+			// compute section to clip and determine if the centroid is close enought
+			vtkSmartPointer<vtkClipPolyData> clipper1 = vtkSmartPointer<vtkClipPolyData>::New();
+			clipper1->SetValue(threshold_bound[1]);
+			clipper1->SetInsideOut(true);
+			clipper1->GenerateClippedOutputOn();
+			clipper1->SetInputData(singleCenterline);
+			clipper1->Update();
+
+			vtkSmartPointer<vtkClipPolyData> clipper2 = vtkSmartPointer<vtkClipPolyData>::New();
+			clipper2->SetValue(threshold_bound[0]);
+			clipper2->SetInsideOut(false);
+			clipper2->GenerateClippedOutputOn();
+			clipper2->SetInputData(clipper1->GetOutput());
+			clipper2->Update();
+
+			vtkSmartPointer<vtkCleanPolyData> cleaner = vtkSmartPointer<vtkCleanPolyData>::New();
+			cleaner->SetInputData(clipper2->GetOutput());
+			cleaner->Update();
+
+			vtkSmartPointer<vtkCenterOfMass> comFilter = vtkSmartPointer<vtkCenterOfMass>::New();
+			comFilter->SetInputData(cleaner->GetOutput());
+			comFilter->Update();
+
+			//std::cout << "picked point: " <<
+			//	m_centerline->GetPoint(m_pickedPointId)[0] << ", " << 
+			//	m_centerline->GetPoint(m_pickedPointId)[1] << ", " <<
+			//	m_centerline->GetPoint(m_pickedPointId)[2] << std::endl;
+
+			//std::cout << "com: " <<
+			//	comFilter->GetCenter()[0] << ", " <<
+			//	comFilter->GetCenter()[1] << ", " <<
+			//	comFilter->GetCenter()[2] << std::endl;
+
+			double centroid_dist =
+				vtkMath::Distance2BetweenPoints(
+					m_centerline->GetPoint(m_pickedPointId),
+					comFilter->GetCenter()
+				);
+
+			//std::cout << "centroid_dist: " << centroid_dist << std::endl;
+
+			vtkSmartPointer<vtkAppendPolyData> appendFilter2 = vtkSmartPointer<vtkAppendPolyData>::New();
+			appendFilter2->AddInputData(m_outputCenterline);
+
+			vtkSmartPointer<vtkAppendPolyData> appendFilterClipped = vtkSmartPointer<vtkAppendPolyData>::New();
+			appendFilterClipped->AddInputData(m_clippedCenterline);
+
+			if (centroid_dist > m_comThreshold)
+			{
+				// direct append to output
+				appendFilterClipped->AddInputData(singleCenterline);
+				appendFilter2->AddInputData(singleCenterline);
+			}
+			else
+			{
+				// clip the centerline and append to output
+				vtkSmartPointer<vtkClipPolyData> clipper3 = vtkSmartPointer<vtkClipPolyData>::New();
+				clipper3->SetValue(threshold_bound[0]);
+				clipper3->SetInsideOut(true);
+				clipper3->GenerateClippedOutputOn();
+				clipper3->SetInputData(singleCenterline);
+				clipper3->Update();
+
+				vtkSmartPointer<vtkClipPolyData> clipper4 = vtkSmartPointer<vtkClipPolyData>::New();
+				clipper4->SetValue(threshold_bound[1]);
+				clipper4->SetInsideOut(false);
+				clipper4->GenerateClippedOutputOn();
+				clipper4->SetInputData(singleCenterline);
+				clipper4->Update();
+
+				vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
+				appendFilter->AddInputData(clipper3->GetOutput());
+				appendFilter->AddInputData(clipper4->GetOutput());
+				appendFilter->Update();
+
+				vtkSmartPointer<vtkCleanPolyData> cleaner2 = vtkSmartPointer<vtkCleanPolyData>::New();
+				cleaner2->SetInputData(appendFilter->GetOutput());
+				cleaner2->Update();
+		
+				appendFilterClipped->AddInputData(cleaner2->GetOutput());
+
+				// interpolation with spline
+				vtkNew<vtkParametricSpline> spline;
+				spline->SetPoints(cleaner2->GetOutput()->GetPoints());
+
+				vtkNew<vtkParametricFunctionSource> functionSource;
+				functionSource->SetParametricFunction(spline);
+				functionSource->Update();
+
+				appendFilter2->AddInputData(functionSource->GetOutput());
+			}
+			appendFilterClipped->Update();
+			appendFilter2->Update();
+			m_clippedCenterline->DeepCopy(appendFilterClipped->GetOutput());
+			m_outputCenterline->DeepCopy(appendFilter2->GetOutput());
+		}
+
+		m_centerline->DeepCopy(m_outputCenterline);
+		
+		//this->ClipVoronoiDiagram();
+
+		vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+		writer->SetInputData(m_clippedCenterline);
+		writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/normalized_centerline.vtp");
+		writer->Write();
+		std::cout << "save complete" << std::endl;
 	}
 
 	this->GetInteractor()->Render();
@@ -156,11 +270,14 @@ void MouseInteractorStylePickCenterline::SetSphere(vtkSphereSource * sphere)
 	m_sphere = sphere;
 }
 
-void MouseInteractorStylePickCenterline::PerformClip()
+void MouseInteractorStylePickCenterline::SetVoronoiDiagram(vtkPolyData * voronoiDiagram)
+{
+	m_voronoiDiagram = voronoiDiagram;
+}
+
+void MouseInteractorStylePickCenterline::ClipPlaneUpdate()
 {
 	int iD = m_pickedPointId;
-
-
 
 	// threshold on normalized abscissas
 	double threshold_bound[2] = {
@@ -187,7 +304,7 @@ void MouseInteractorStylePickCenterline::PerformClip()
 
 	vtkSmartPointer<vtkClipPolyData> clipper2 = vtkSmartPointer<vtkClipPolyData>::New();
 	clipper2->SetValue(threshold_bound[0]);
-	clipper1->SetInsideOut(false);
+	clipper2->SetInsideOut(false);
 	clipper2->GenerateClippedOutputOn();
 	clipper2->SetInputData(clipper1->GetOutput());
 	clipper2->Update();
@@ -213,6 +330,20 @@ void MouseInteractorStylePickCenterline::PerformClip()
 		threshold->Update();
 
 		if (threshold->GetOutput()->GetNumberOfPoints() == 0)
+			continue;
+
+		// check centroid of the thresheld section is close to picked point
+		vtkSmartPointer<vtkCenterOfMass> comFilter = vtkSmartPointer<vtkCenterOfMass>::New();
+		comFilter->SetInputData(threshold->GetOutput());
+		comFilter->Update();
+		
+		double centroid_dist =
+			vtkMath::Distance2BetweenPoints(
+				m_centerline->GetPoint(m_pickedPointId),
+				comFilter->GetCenter()
+				);
+		
+		if (centroid_dist > m_comThreshold)
 			continue;
 
 		std::cout << "cetnerlineid:" << i << ", number of points: " << threshold->GetOutput()->GetNumberOfPoints() << std::endl;
@@ -280,6 +411,60 @@ void MouseInteractorStylePickCenterline::CreateClipPlaneActor(vtkUnstructuredGri
 
 	actor->SetMapper(priximal_mapper);
 	actor->GetProperty()->SetColor(1, 0, 0);
+}
+
+void MouseInteractorStylePickCenterline::ClipVoronoiDiagram()
+{
+	vtkSmartPointer<vtkIntArray> maskArray = vtkSmartPointer<vtkIntArray>::New();
+	maskArray->SetNumberOfComponents(1);
+	maskArray->SetNumberOfTuples(m_voronoiDiagram->GetNumberOfPoints());
+	maskArray->FillComponent(0, 0);
+
+	// compute connectivity on clipped centerline
+
+	// loop over all connected centerlines
+	//for (int i = 0; i < patchCenterline->GetCellData()->GetArray("CenterlineIds")->GetNumberOfTuples(); i++)
+	//{
+	//	vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
+	//	threshold->ThresholdBetween(i, i);
+	//	threshold->SetInputData(patchCenterline);
+	//	threshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "CenterlineIds");
+	//	threshold->Update();
+
+	//	if (threshold->GetOutput()->GetNumberOfPoints() == 0)
+	//		continue;
+
+	//	// compute patch end point parameters
+
+	//	double point0[3];
+	//	double point1[3];
+	//	double radius0;
+
+	//	if (i == 0)
+	//	{
+	//		cell->GetPoints()->GetPoint(cell->GetNumberOfPoints() - 1,point0);
+	//		cell->GetPoints()->GetPoint(cell->GetNumberOfPoints() - 2, point1);
+	//		radius0 = patchCenterline->GetPointData()->GetArray("Radius")
+	//			->GetTuple1(cell->GetPointId(cell->GetNumberOfPoints() - 1));
+	//	}
+	//	else
+	//	{
+	//		cell->GetPoints()->GetPoint(0, point0);
+	//		cell->GetPoints()->GetPoint(1, point1);
+	//		radius0 = patchCenterline->GetPointData()->GetArray("Radius")
+	//			->GetTuple1(cell->GetPointId(0));
+	//	}
+
+	//	double tan[3];
+	//	tan[0] = point1[0] - point0[0];
+	//	tan[1] = point1[1] - point0[1];
+	//	tan[2] = point1[2] - point0[2];
+	//	vtkMath::Normalize(tan);
+
+	//	return tan, point0, radius0
+
+	//	// mask with patch
+	//}
 }
 
 vtkStandardNewMacro(MouseInteractorStylePickCenterline);

@@ -131,64 +131,7 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
-	//vtkSmartPointer<vtkvmtkCapPolyData> capper = vtkSmartPointer<vtkvmtkCapPolyData>::New();
-	//capper->SetInputData(triangulator->GetOutput());
-	//capper->Update();
-
-	//vtkSmartPointer<vtkPolyDataNormals> surfaceNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
-	//surfaceNormals->SetInputData(capper->GetOutput());
-	//surfaceNormals->SplittingOff();
-	//surfaceNormals->AutoOrientNormalsOn();
-	//surfaceNormals->SetFlipNormals(false);
-	//surfaceNormals->ComputePointNormalsOn();
-	//surfaceNormals->ConsistencyOn();
-	//surfaceNormals->Update();
-
-	//std::cout << "performing delaunay tesselation..." << std::endl;
-
-	//vtkSmartPointer<vtkUnstructuredGrid> delaunayTessellation = vtkSmartPointer<vtkUnstructuredGrid>::New();
-
-	//vtkSmartPointer<vtkDelaunay3D> delaunayTessellator = vtkSmartPointer<vtkDelaunay3D>::New();
-	//delaunayTessellator->CreateDefaultLocator();
-	//delaunayTessellator->SetInputConnection(surfaceNormals->GetOutputPort());
-	//delaunayTessellator->SetTolerance(0.001);
-	//delaunayTessellator->Update();
-	//delaunayTessellation->DeepCopy(delaunayTessellator->GetOutput());
-
-	//vtkDataArray* normalsArray = surfaceNormals->GetOutput()->GetPointData()->GetNormals();
-	//delaunayTessellation->GetPointData()->AddArray(normalsArray);
-
-	//std::cout << "extracting internal tetrahedra..." << std::endl;
-
-	//vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor> internalTetrahedraExtractor = vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor>::New();
-	//internalTetrahedraExtractor->SetInputData(delaunayTessellation);
-	//internalTetrahedraExtractor->SetOutwardNormalsArrayName(normalsArray->GetName());
-	//internalTetrahedraExtractor->RemoveSubresolutionTetrahedraOn();
-	//internalTetrahedraExtractor->SetSubresolutionFactor(1.0);
-	//internalTetrahedraExtractor->SetSurface(surfaceNormals->GetOutput());
-
-	//if (capper->GetCapCenterIds()->GetNumberOfIds() > 0)
-	//{
-	//	internalTetrahedraExtractor->UseCapsOn();
-	//	internalTetrahedraExtractor->SetCapCenterIds(capper->GetCapCenterIds());
-	//	internalTetrahedraExtractor->Update();
-	//}
-
-	//delaunayTessellation->DeepCopy(internalTetrahedraExtractor->GetOutput());
-
-	//std::cout << "computing Voronoi diagram..." << std::endl;
-
-	//vtkSmartPointer<vtkvmtkVoronoiDiagram3D> voronoiDiagramFilter = vtkSmartPointer<vtkvmtkVoronoiDiagram3D>::New();
-	//voronoiDiagramFilter->SetInputData(delaunayTessellation);
-	//voronoiDiagramFilter->SetRadiusArrayName("MaximumInscribedSphereRadius");
-	//voronoiDiagramFilter->Update();
-
-	//std::cout << "simplifying Voronoi diagram..." << std::endl;
-
-	//vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram> voronoiDiagramSimplifier = vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram>::New();
-	//voronoiDiagramSimplifier->SetInputConnection(voronoiDiagramFilter->GetOutputPort());
-	//voronoiDiagramSimplifier->SetUnremovablePointIds(voronoiDiagramFilter->GetPoleIds());
-	//voronoiDiagramSimplifier->Update();
+	//this->ComputeVoronoiDiagram();
 
 	//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
 	//writer->SetInputData(voronoiDiagramSimplifier->GetOutput());
@@ -250,9 +193,76 @@ void ParentVesselReconstruction::SeedPicker()
 	iren->SetInteractorStyle(style);
 	style->SetCenterline(m_centerline);
 	style->SetSphere(m_sphere);
+	style->SetVoronoiDiagram(m_voronoiDiagram);
 
 	iren->Initialize();
 	renWin->Render();
 	ren->ResetCamera();
 	iren->Start();
+}
+
+void ParentVesselReconstruction::ComputeVoronoiDiagram()
+{
+	std::cout << "start to compute Voronoi diagram..." << std::endl;
+
+	vtkSmartPointer<vtkvmtkCapPolyData> capper = vtkSmartPointer<vtkvmtkCapPolyData>::New();
+	capper->SetInputData(m_source);
+	capper->Update();
+
+	vtkSmartPointer<vtkPolyDataNormals> surfaceNormals = vtkSmartPointer<vtkPolyDataNormals>::New();
+	surfaceNormals->SetInputData(capper->GetOutput());
+	surfaceNormals->SplittingOff();
+	surfaceNormals->AutoOrientNormalsOn();
+	surfaceNormals->SetFlipNormals(false);
+	surfaceNormals->ComputePointNormalsOn();
+	surfaceNormals->ConsistencyOn();
+	surfaceNormals->Update();
+
+	std::cout << "performing delaunay tesselation..." << std::endl;
+
+	vtkSmartPointer<vtkUnstructuredGrid> delaunayTessellation = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+	vtkSmartPointer<vtkDelaunay3D> delaunayTessellator = vtkSmartPointer<vtkDelaunay3D>::New();
+	delaunayTessellator->CreateDefaultLocator();
+	delaunayTessellator->SetInputConnection(surfaceNormals->GetOutputPort());
+	delaunayTessellator->SetTolerance(0.001);
+	delaunayTessellator->Update();
+	delaunayTessellation->DeepCopy(delaunayTessellator->GetOutput());
+
+	vtkDataArray* normalsArray = surfaceNormals->GetOutput()->GetPointData()->GetNormals();
+	delaunayTessellation->GetPointData()->AddArray(normalsArray);
+
+	std::cout << "extracting internal tetrahedra..." << std::endl;
+
+	vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor> internalTetrahedraExtractor = vtkSmartPointer<vtkvmtkInternalTetrahedraExtractor>::New();
+	internalTetrahedraExtractor->SetInputData(delaunayTessellation);
+	internalTetrahedraExtractor->SetOutwardNormalsArrayName(normalsArray->GetName());
+	internalTetrahedraExtractor->RemoveSubresolutionTetrahedraOn();
+	internalTetrahedraExtractor->SetSubresolutionFactor(1.0);
+	internalTetrahedraExtractor->SetSurface(surfaceNormals->GetOutput());
+
+	if (capper->GetCapCenterIds()->GetNumberOfIds() > 0)
+	{
+		internalTetrahedraExtractor->UseCapsOn();
+		internalTetrahedraExtractor->SetCapCenterIds(capper->GetCapCenterIds());
+		internalTetrahedraExtractor->Update();
+	}
+
+	delaunayTessellation->DeepCopy(internalTetrahedraExtractor->GetOutput());
+
+	std::cout << "computing Voronoi diagram..." << std::endl;
+
+	vtkSmartPointer<vtkvmtkVoronoiDiagram3D> voronoiDiagramFilter = vtkSmartPointer<vtkvmtkVoronoiDiagram3D>::New();
+	voronoiDiagramFilter->SetInputData(delaunayTessellation);
+	voronoiDiagramFilter->SetRadiusArrayName("MaximumInscribedSphereRadius");
+	voronoiDiagramFilter->Update();
+
+	std::cout << "simplifying Voronoi diagram..." << std::endl;
+
+	vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram> voronoiDiagramSimplifier = vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram>::New();
+	voronoiDiagramSimplifier->SetInputConnection(voronoiDiagramFilter->GetOutputPort());
+	voronoiDiagramSimplifier->SetUnremovablePointIds(voronoiDiagramFilter->GetPoleIds());
+	voronoiDiagramSimplifier->Update();
+
+	m_voronoiDiagram->DeepCopy(voronoiDiagramSimplifier->GetOutput());
 }
