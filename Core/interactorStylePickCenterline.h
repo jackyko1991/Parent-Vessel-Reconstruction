@@ -63,6 +63,8 @@ private:
 	void ClipCenterline();
 	void ClipVoronoiDiagram();
 	void InterpoldateVoronoiDiagram();
+	void ExtractCylindricInterpolationVoronoiDiagram(int, int, double, vtkPolyData*, vtkPolyData*, vtkPolyData*);
+
 };
 
 #endif

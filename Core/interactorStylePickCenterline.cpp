@@ -16,11 +16,13 @@
 #include "vtkGeometryFilter.h"
 #include "vtkConnectivityFilter.h"
 #include "vtkSphere.h"
+#include "vtkNew.h"
 
 #include "vtkXMLPolyDataWriter.h"
 #include "vtkXMLPolyDataReader.h"
 
 #include "vtkvmtkPolyBallLine.h"
+#include "vtkvmtkCenterlineAttributesFilter.h"
 
 void MouseInteractorStylePickCenterline::OnKeyPress()
 {
@@ -93,8 +95,8 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 		}
 
 		this->ClipCenterline();
-		this->ClipVoronoiDiagram();
-		//this->InterpoldateVoronoiDiagram();
+		//this->ClipVoronoiDiagram();
+		this->InterpoldateVoronoiDiagram();
 	}
 
 	this->GetInteractor()->Render();
@@ -248,7 +250,6 @@ void MouseInteractorStylePickCenterline::CreateClipPlaneActor(vtkUnstructuredGri
 
 void MouseInteractorStylePickCenterline::ClipCenterline()
 {
-
 	// create new clipped centerline
 	if (m_clippedCenterline != NULL)
 	{
@@ -384,6 +385,14 @@ void MouseInteractorStylePickCenterline::ClipCenterline()
 		m_clippedCenterline->DeepCopy(appendFilterClipped->GetOutput());
 		m_outputCenterline->DeepCopy(appendFilter2->GetOutput());
 	}
+
+	// recompute centerline attributes
+	vtkSmartPointer<vtkvmtkCenterlineAttributesFilter> attributeFilter = vtkSmartPointer<vtkvmtkCenterlineAttributesFilter>::New();
+	attributeFilter->SetInputData(m_outputCenterline);
+	attributeFilter->SetAbscissasArrayName("Abscissas");
+	attributeFilter->SetParallelTransportNormalsArrayName("ParallelTransportNormals");
+	attributeFilter->Update();
+	m_outputCenterline->DeepCopy(attributeFilter->GetOutput());
 
 	m_centerline->DeepCopy(m_outputCenterline);
 }
@@ -599,15 +608,120 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 	reader->Update();
 	m_clippedVoronoiDiagram->DeepCopy(reader->GetOutput());
 
-	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\normalized_centerline.vtp");
+	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_interpolate.vtp");
 	reader->Update();
 	m_centerline->DeepCopy(reader->GetOutput());
 
-	vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-	writer->SetInputData(m_clippedVoronoiDiagram);
-	writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/clipped_voronoi.vtp");
-	writer->Write();
-	std::cout << "save complete" << std::endl;
+	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_clipped.vtp");
+	reader->Update();
+	m_clippedCenterline->DeepCopy(reader->GetOutput());
+
+	for (int i = 1; i < m_centerline->GetNumberOfCells()+1; i++)
+	{
+		int interpolatingCellId = i - 1;
+		int startId = 0;
+		int endId = i;
+		
+		vtkNew<vtkGenericCell> startCell;
+		m_clippedCenterline->GetCell(startId, startCell);
+		int startCellPointId = startCell->GetPointId(startCell->GetNumberOfPoints() - 1);
+		double* startCellPoint = m_clippedCenterline->GetPoint(startCellPointId);
+		double startCellPointRadius = m_clippedCenterline->GetPointData()->GetArray("Radius")->GetTuple1(startCellPointId);
+		double startCellPointHalfRadius = startCellPointRadius / 7.0;
+
+		vtkNew<vtkPolyData> startInterpolationDataset;
+		ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, m_clippedVoronoiDiagram, m_clippedCenterline, startInterpolationDataset);
+
+		//	startInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, clippedVoronoi, patchCenterlines)
+		//	startHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+
+		//	endCell = vtk.vtkGenericCell()
+		//	patchCenterlines.GetCell(endId, endCell)
+
+		//	endCellPointId = endCell.GetPointId(0)
+		//	endCellPoint = patchCenterlines.GetPoint(endCellPointId)
+		//	endCellPointRadius = patchCenterlines.GetPointData().GetArray(radiusArrayName).GetTuple1(endCellPointId)
+		//	endCellPointHalfRadius = endCellPointRadius / 7.0
+
+		//	endInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointRadius, clippedVoronoi, patchCenterlines)
+		//	endHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+
+		//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, startId, endId, startInterpolationDataset, endHalfInterpolationDataset, interpolatedCenterlines, 1)
+		//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
+
+		//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, endId, startId, endInterpolationDataset, startHalfInterpolationDataset, interpolatedCenterlines, 0)
+		//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
+	
+		vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+		writer->SetInputData(startInterpolationDataset);
+		writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/startInterpolationDataset.vtp");
+		writer->Write();
+		std::cout << "save complete" << std::endl;
+
+		break;
+	}
+
+	//vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+	//writer->SetInputData(m_clippedVoronoiDiagram);
+	//writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/clipped_voronoi.vtp");
+	//writer->Write();
+	//std::cout << "save complete" << std::endl;
+}
+
+void MouseInteractorStylePickCenterline::ExtractCylindricInterpolationVoronoiDiagram(int cellId, int  pointId, double cylinderRadius, vtkPolyData *voronoi, vtkPolyData *centerlines, vtkPolyData*interpolationDataset)
+{
+	std::cout << "Extracting cylindric interpolation Voronoi diagram..." << std::endl;
+
+	//isInside = 0
+
+ //  if (cellId == 0):
+ //     cylinderTop = centerlines.GetPoint(pointId) 
+ //     cylinderCenter = centerlines.GetPoint(pointId-interpolationHalfSize)
+ //     cylinderBottom = centerlines.GetPoint(pointId-interpolationHalfSize*2) 
+ //  else:
+ //     cylinderTop = centerlines.GetPoint(pointId) 
+ //     cylinderCenter = centerlines.GetPoint(pointId+interpolationHalfSize)
+ //     cylinderBottom = centerlines.GetPoint(pointId+interpolationHalfSize*2) 
+
+ //  interpolationDataset = vtk.vtkPolyData()
+ //  interpolationDatasetPoints = vtk.vtkPoints()
+ //  interpolationDatasetCellArray = vtk.vtkCellArray()
+ //         
+ //  maskArray = vtk.vtkIntArray()
+ //  maskArray.SetNumberOfComponents(1)
+ //  maskArray.SetNumberOfTuples(voronoi.GetNumberOfPoints())
+ //  maskArray.FillComponent(0,0)
+
+ //  for i in range(voronoi.GetNumberOfPoints()):
+ //     point = voronoi.GetPoint(i)
+ //     isInside = IsPointInsideInterpolationCylinder(point,cylinderTop,cylinderCenter,cylinderBottom,cylinderRadius)
+
+ //     if (isInside == 1):
+ //        maskArray.SetTuple1(i,1)
+
+ //  numberOfInterpolationPoints = ComputeNumberOfMaskedPoints(maskArray)
+
+ //  radiusArray = vtk.vtkDoubleArray()
+ //  radiusArray.SetNumberOfComponents(1)
+ //  radiusArray.SetNumberOfTuples(numberOfInterpolationPoints)
+ //  radiusArray.SetName(radiusArrayName)
+ //  radiusArray.FillComponent(0,0.0)
+
+ //  count = 0
+ //  for i in range(voronoi.GetNumberOfPoints()):
+ //     value = maskArray.GetTuple1(i)
+ //     if (value == 1):
+ //        interpolationDatasetPoints.InsertNextPoint(voronoi.GetPoint(i))
+ //        interpolationDatasetCellArray.InsertNextCell(1)
+ //        interpolationDatasetCellArray.InsertCellPoint(count)
+ //        radius = voronoi.GetPointData().GetArray(radiusArrayName).GetTuple1(i)
+ //        radiusArray.SetTuple1(count,radius)
+ //        count +=1
+
+ //  interpolationDataset.SetPoints(interpolationDatasetPoints)
+ //  interpolationDataset.SetVerts(interpolationDatasetCellArray)
+ //  interpolationDataset.GetPointData().AddArray(radiusArray)
+
 }
 
 vtkStandardNewMacro(MouseInteractorStylePickCenterline);
