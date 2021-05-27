@@ -47,8 +47,8 @@ private:
 	vtkSmartPointer<vtkPolyData> m_clippedCenterline = NULL;
 	vtkSmartPointer<vtkPolyData> m_outputCenterline = NULL;
 	vtkSmartPointer<vtkPolyData> m_voronoiDiagram = NULL;
+	vtkSmartPointer<vtkPolyData> m_clippedVoronoiDiagram = NULL;
 	vtkSmartPointer<vtkPolyData> m_outputVoronoiDiagram = NULL;
-
 	vtkSmartPointer<vtkPolyData> m_normalized_centerline = NULL;
 	vtkSmartPointer<vtkKdTreePointLocator> m_kDTree = vtkSmartPointer<vtkKdTreePointLocator>::New();
 	
@@ -60,8 +60,9 @@ private:
 
 	void ClipPlaneUpdate();
 	void CreateClipPlaneActor(vtkUnstructuredGrid*, int, vtkActor*);
+	void ClipCenterline();
 	void ClipVoronoiDiagram();
-
+	void InterpoldateVoronoiDiagram();
 };
 
 #endif
