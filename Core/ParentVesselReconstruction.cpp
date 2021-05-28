@@ -140,7 +140,8 @@ void ParentVesselReconstruction::Run()
 
 	// quick load voronoi diagram for debug
 	vtkSmartPointer<vtkXMLPolyDataReader> readerV = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	readerV->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\voronoi.vtp");
+	//readerV->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\voronoi.vtp");
+	readerV->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
 	readerV->Update();
 	m_voronoiDiagram->DeepCopy(readerV->GetOutput());
 

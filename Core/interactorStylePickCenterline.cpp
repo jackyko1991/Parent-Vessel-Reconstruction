@@ -17,6 +17,13 @@
 #include "vtkConnectivityFilter.h"
 #include "vtkSphere.h"
 #include "vtkNew.h"
+#include "vtkCylinder.h"
+#include "vtkPlane.h"
+#include "vtkDoubleArray.h"
+#include "vtkImplicitBoolean.h"
+#include "vtkPointLocator.h"
+#include "vtkPointInterpolator.h"
+#include "vtkPointSource.h"
 
 #include "vtkXMLPolyDataWriter.h"
 #include "vtkXMLPolyDataReader.h"
@@ -95,6 +102,8 @@ void MouseInteractorStylePickCenterline::OnKeyPress()
 		}
 
 		this->ClipCenterline();
+		std::cout << "clip ok" << std::endl;
+
 		//this->ClipVoronoiDiagram();
 		this->InterpoldateVoronoiDiagram();
 	}
@@ -392,8 +401,8 @@ void MouseInteractorStylePickCenterline::ClipCenterline()
 	attributeFilter->SetAbscissasArrayName("Abscissas");
 	attributeFilter->SetParallelTransportNormalsArrayName("ParallelTransportNormals");
 	attributeFilter->Update();
-	m_outputCenterline->DeepCopy(attributeFilter->GetOutput());
 
+	m_outputCenterline->DeepCopy(attributeFilter->GetOutput());
 	m_centerline->DeepCopy(m_outputCenterline);
 }
 
@@ -604,124 +613,318 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 {
 	// quick load voronoi diagram for debug
 	vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\clipped_voronoi.vtp");
+	//reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\clipped_voronoi.vtp");
+	reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi_clipped.vtp");
 	reader->Update();
+	m_clippedVoronoiDiagram = vtkSmartPointer<vtkPolyData>::New();
 	m_clippedVoronoiDiagram->DeepCopy(reader->GetOutput());
 
-	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_interpolate.vtp");
+	//reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_interpolate.vtp");
+	reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/centerline_interpolate.vtp");
 	reader->Update();
+
 	m_centerline->DeepCopy(reader->GetOutput());
 
-	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_clipped.vtp");
-	reader->Update();
+	//reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\centerline_clipped.vtp");
+	reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/centerline_patched.vtp");
+	reader->Update();m_clippedCenterline = vtkSmartPointer<vtkPolyData>::New();;
+
 	m_clippedCenterline->DeepCopy(reader->GetOutput());
 
-	for (int i = 1; i < m_centerline->GetNumberOfCells()+1; i++)
+	// interpolate the radius value using clipped voronoi
+	vtkNew<vtkPointInterpolator> interpolator;
+	interpolator->SetInputData(m_centerline);
+	interpolator->SetSourceData(m_clippedVoronoiDiagram);
+	interpolator->Update();
+
+	vtkNew<vtkPolyData> newPoints;
+
+	// loop over independent centerlineids
+	for (int i = 0; i < m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetNumberOfTuples(); i++)
 	{
-		int interpolatingCellId = i - 1;
-		int startId = 0;
-		int endId = i;
-		
-		vtkNew<vtkGenericCell> startCell;
-		m_clippedCenterline->GetCell(startId, startCell);
-		int startCellPointId = startCell->GetPointId(startCell->GetNumberOfPoints() - 1);
-		double* startCellPoint = m_clippedCenterline->GetPoint(startCellPointId);
-		double startCellPointRadius = m_clippedCenterline->GetPointData()->GetArray("Radius")->GetTuple1(startCellPointId);
-		double startCellPointHalfRadius = startCellPointRadius / 7.0;
 
-		vtkNew<vtkPolyData> startInterpolationDataset;
-		ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, m_clippedVoronoiDiagram, m_clippedCenterline, startInterpolationDataset);
+		// threshold to get independent lines
+		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
+		threshold->ThresholdBetween(i, i);
+		threshold->SetInputData(m_clippedCenterline);
+		threshold->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_CELLS, "CenterlineIds");
+		threshold->Update();
 
-		//	startInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, clippedVoronoi, patchCenterlines)
-		//	startHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+		if (threshold->GetOutput()->GetNumberOfPoints() == 0)
+			continue;
 
-		//	endCell = vtk.vtkGenericCell()
-		//	patchCenterlines.GetCell(endId, endCell)
+		vtkNew<vtkGeometryFilter> geomFilter;
+		geomFilter->SetInputData(threshold->GetOutput());
+		geomFilter->Update();
 
-		//	endCellPointId = endCell.GetPointId(0)
-		//	endCellPoint = patchCenterlines.GetPoint(endCellPointId)
-		//	endCellPointRadius = patchCenterlines.GetPointData().GetArray(radiusArrayName).GetTuple1(endCellPointId)
-		//	endCellPointHalfRadius = endCellPointRadius / 7.0
+		// perform connectivity to get proximal and distal centerlines
+		vtkNew<vtkConnectivityFilter> connectFilter;
+		connectFilter->SetInputData(geomFilter->GetOutput());
+		connectFilter->SetExtractionModeToAllRegions();
+		connectFilter->SetColorRegions(true);
+		connectFilter->Update();
 
-		//	endInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointRadius, clippedVoronoi, patchCenterlines)
-		//	endHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+		if (connectFilter->GetNumberOfExtractedRegions() != 2)
+			continue;
 
-		//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, startId, endId, startInterpolationDataset, endHalfInterpolationDataset, interpolatedCenterlines, 1)
-		//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
+		vtkNew<vtkThreshold> thresholdFilter;
+		thresholdFilter->SetInputData(connectFilter->GetOutput());
+		thresholdFilter->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "RegionId");
 
-		//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, endId, startId, endInterpolationDataset, startHalfInterpolationDataset, interpolatedCenterlines, 0)
-		//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
-	
-		vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-		writer->SetInputData(startInterpolationDataset);
-		writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/startInterpolationDataset.vtp");
-		writer->Write();
-		std::cout << "save complete" << std::endl;
+		// get start and end points
+		thresholdFilter->ThresholdBetween(0, 0);
+		thresholdFilter->Update();
+		double startPoint[3];
+		startPoint[0] = thresholdFilter->GetOutput()->GetPoint(thresholdFilter->GetOutput()->GetNumberOfPoints()-1)[0];
+		startPoint[1] = thresholdFilter->GetOutput()->GetPoint(thresholdFilter->GetOutput()->GetNumberOfPoints() - 1)[1];
+		startPoint[2] = thresholdFilter->GetOutput()->GetPoint(thresholdFilter->GetOutput()->GetNumberOfPoints() - 1)[2];
 
-		break;
+		thresholdFilter->ThresholdBetween(1, 1);
+		thresholdFilter->Update();
+		double endPoint[3];
+		 endPoint[0] = thresholdFilter->GetOutput()->GetPoint(0)[0];
+		 endPoint[1] = thresholdFilter->GetOutput()->GetPoint(0)[1];
+		 endPoint[2] = thresholdFilter->GetOutput()->GetPoint(0)[2];
+
+		// get start and end point ids
+		vtkNew<vtkConnectivityFilter> connectFilter2;
+		connectFilter2->SetInputData(interpolator->GetOutput());
+		connectFilter2->SetExtractionModeToClosestPointRegion();
+		connectFilter2->SetClosestPoint(endPoint);
+		connectFilter2->Update();
+
+		vtkNew<vtkPointLocator> centerlineLoactor;
+		centerlineLoactor->SetDataSet(connectFilter2->GetOutput());
+		centerlineLoactor->BuildLocator();
+		int startId = centerlineLoactor->FindClosestPoint(startPoint);
+		int endId = centerlineLoactor->FindClosestPoint(endPoint);
+		//int midId = (startId + endId) / 2;
+
+		std::cout << "start point :" << startPoint[0]<<" " << startPoint[1] << " " << startPoint[2] << std::endl;
+		std::cout << "end point:" << endPoint[0] << " " << endPoint[1] << " " << endPoint[2] <<std::endl;
+
+		std::cout << "startId:" << startId << std::endl;
+		std::cout << "endId:" << endId << std::endl;
+
+		vtkNew<vtkAppendPolyData> appendFilter;
+		appendFilter->AddInputData(newPoints);
+
+		// create sphere point clouds
+		for (int j = startId; j <= endId; j++)
+		{
+			std::cout << "center: "
+				<< connectFilter2->GetOutput()->GetPoint(j)[0] << " "
+				<< connectFilter2->GetOutput()->GetPoint(j)[1] << " "
+				<< connectFilter2->GetOutput()->GetPoint(j)[2]
+				<< " radius: "
+				<< connectFilter2->GetOutput()->GetPointData()->GetArray("MaximumInscribedSphereRadius")->GetTuple1(j)
+				<< std::endl;
+
+			vtkNew<vtkPointSource> pointSource;
+			pointSource->SetCenter(connectFilter2->GetOutput()->GetPoint(j));
+			pointSource->SetRadius(connectFilter2->GetOutput()->GetPointData()->GetArray("MaximumInscribedSphereRadius")->GetTuple1(j));
+			pointSource->SetNumberOfPoints(1000); //may need to change to adaptive point cloud density
+			pointSource->Update();
+
+			appendFilter->AddInputData(pointSource->GetOutput());
+			appendFilter->Update();
+
+			newPoints->DeepCopy(appendFilter->GetOutput());
+		}
+
+		//// prepare interpolate input
+		//vtkPolyData* interpolationEnds = this->ExtractCylindricInterpolationVoronoiDiagram(geomFilter->GetOutput());
 	}
 
-	//vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-	//writer->SetInputData(m_clippedVoronoiDiagram);
-	//writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/clipped_voronoi.vtp");
-	//writer->Write();
-	//std::cout << "save complete" << std::endl;
+	vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+	writer->SetInputData(newPoints);
+	writer->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/output.vtp");
+	writer->Write();
+	std::cout << "save complete" << std::endl;
+
+
+
+
+	//m_clippedCenterline->DeepCopy(reader->GetOutput());
+
+	//for (int i = 1; i < m_centerline->GetNumberOfCells()+1; i++)
+	//{
+	//	int interpolatingCellId = i - 1;
+	//	int startId = 0;
+	//	int endId = i;
+	//	
+	//	vtkNew<vtkGenericCell> startCell;
+	//	m_clippedCenterline->GetCell(startId, startCell);
+	//	int startCellPointId = startCell->GetPointId(startCell->GetNumberOfPoints() - 1);
+	//	double* startCellPoint = m_clippedCenterline->GetPoint(startCellPointId);
+	//	double startCellPointRadius = m_clippedCenterline->GetPointData()->GetArray("Radius")->GetTuple1(startCellPointId);
+	//	double startCellPointHalfRadius = startCellPointRadius / 7.0;
+
+	//	vtkNew<vtkPolyData> startInterpolationDataset;
+	//	ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, m_clippedVoronoiDiagram, m_clippedCenterline, startInterpolationDataset);
+
+	//	//	startInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointRadius, clippedVoronoi, patchCenterlines)
+	//	//	startHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(startId, startCellPointId, startCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+
+	//	//	endCell = vtk.vtkGenericCell()
+	//	//	patchCenterlines.GetCell(endId, endCell)
+
+	//	//	endCellPointId = endCell.GetPointId(0)
+	//	//	endCellPoint = patchCenterlines.GetPoint(endCellPointId)
+	//	//	endCellPointRadius = patchCenterlines.GetPointData().GetArray(radiusArrayName).GetTuple1(endCellPointId)
+	//	//	endCellPointHalfRadius = endCellPointRadius / 7.0
+
+	//	//	endInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointRadius, clippedVoronoi, patchCenterlines)
+	//	//	endHalfInterpolationDataset = ExtractCylindricInterpolationVoronoiDiagram(endId, endCellPointId, endCellPointHalfRadius, clippedVoronoi, patchCenterlines)
+
+	//	//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, startId, endId, startInterpolationDataset, endHalfInterpolationDataset, interpolatedCenterlines, 1)
+	//	//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
+
+	//	//	newVoronoiPoints, newVoronoiPointsMISR = VoronoiDiagramInterpolation(interpolationCellId, endId, startId, endInterpolationDataset, startHalfInterpolationDataset, interpolatedCenterlines, 0)
+	//	//	completeVoronoiDiagram = InsertNewVoronoiPoints(completeVoronoiDiagram, newVoronoiPoints, newVoronoiPointsMISR)
+	//
+	//	vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+	//	writer->SetInputData(startInterpolationDataset);
+	//	writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/startInterpolationDataset.vtp");
+	//	writer->Write();
+	//	std::cout << "save complete" << std::endl;
+
+	//	break;
+	//}
+
+
 }
 
-void MouseInteractorStylePickCenterline::ExtractCylindricInterpolationVoronoiDiagram(int cellId, int  pointId, double cylinderRadius, vtkPolyData *voronoi, vtkPolyData *centerlines, vtkPolyData*interpolationDataset)
+vtkPolyData* MouseInteractorStylePickCenterline::ExtractCylindricInterpolationVoronoiDiagram(vtkPolyData* clippedCenterline)
 {
 	std::cout << "Extracting cylindric interpolation Voronoi diagram..." << std::endl;
 
-	//isInside = 0
+	// perform connectivity to get proximal and distal centerlines
+	vtkNew<vtkConnectivityFilter> connectFilter;
+	connectFilter->SetInputData(clippedCenterline);
+	connectFilter->SetExtractionModeToAllRegions();
+	connectFilter->SetColorRegions(true);
+	connectFilter->Update();
 
- //  if (cellId == 0):
- //     cylinderTop = centerlines.GetPoint(pointId) 
- //     cylinderCenter = centerlines.GetPoint(pointId-interpolationHalfSize)
- //     cylinderBottom = centerlines.GetPoint(pointId-interpolationHalfSize*2) 
- //  else:
- //     cylinderTop = centerlines.GetPoint(pointId) 
- //     cylinderCenter = centerlines.GetPoint(pointId+interpolationHalfSize)
- //     cylinderBottom = centerlines.GetPoint(pointId+interpolationHalfSize*2) 
+	if (connectFilter->GetNumberOfExtractedRegions() != 2)
+		return NULL;
 
- //  interpolationDataset = vtk.vtkPolyData()
- //  interpolationDatasetPoints = vtk.vtkPoints()
- //  interpolationDatasetCellArray = vtk.vtkCellArray()
- //         
- //  maskArray = vtk.vtkIntArray()
- //  maskArray.SetNumberOfComponents(1)
- //  maskArray.SetNumberOfTuples(voronoi.GetNumberOfPoints())
- //  maskArray.FillComponent(0,0)
+	vtkNew<vtkThreshold> thresholdFilter;
+	thresholdFilter->SetInputData(connectFilter->GetOutput());
+	thresholdFilter->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "RegionId");
+	
+	// proximal
+	thresholdFilter->ThresholdBetween(0, 0);
+	thresholdFilter->Update();
 
- //  for i in range(voronoi.GetNumberOfPoints()):
- //     point = voronoi.GetPoint(i)
- //     isInside = IsPointInsideInterpolationCylinder(point,cylinderTop,cylinderCenter,cylinderBottom,cylinderRadius)
+	double* tangent1 = thresholdFilter->GetOutput()->GetPointData()->GetArray("FrenetTangent")->GetTuple3(thresholdFilter->GetOutput()->GetNumberOfPoints() - 1);
+	double tangent1_norm = vtkMath::Norm(tangent1);
+	tangent1[0] = tangent1[0] / tangent1_norm;
+	tangent1[1] = tangent1[1] / tangent1_norm;
+	tangent1[2] = tangent1[2] / tangent1_norm;
 
- //     if (isInside == 1):
- //        maskArray.SetTuple1(i,1)
+	double* point1 = thresholdFilter->GetOutput()->GetPoint(thresholdFilter->GetOutput()->GetNumberOfPoints() - 1);
 
- //  numberOfInterpolationPoints = ComputeNumberOfMaskedPoints(maskArray)
+	// create cylinder function 
+	vtkNew<vtkCylinder> cylinderFunction1;
+	cylinderFunction1->SetCenter(point1);
+	cylinderFunction1->SetRadius(thresholdFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(thresholdFilter->GetOutput()->GetNumberOfPoints() - 1)*1.5);
+	cylinderFunction1->SetAxis(tangent1);
 
- //  radiusArray = vtk.vtkDoubleArray()
- //  radiusArray.SetNumberOfComponents(1)
- //  radiusArray.SetNumberOfTuples(numberOfInterpolationPoints)
- //  radiusArray.SetName(radiusArrayName)
- //  radiusArray.FillComponent(0,0.0)
+	// clip planes
+	vtkNew<vtkPlane> planeFunction11;
+	double plane11origin[3];
+	plane11origin[0] = point1[0] - tangent1[0]*1.5;
+	plane11origin[1] = point1[1] - tangent1[1] * 1.5;
+	plane11origin[2] = point1[2] - tangent1[2] * 1.5;
 
- //  count = 0
- //  for i in range(voronoi.GetNumberOfPoints()):
- //     value = maskArray.GetTuple1(i)
- //     if (value == 1):
- //        interpolationDatasetPoints.InsertNextPoint(voronoi.GetPoint(i))
- //        interpolationDatasetCellArray.InsertNextCell(1)
- //        interpolationDatasetCellArray.InsertCellPoint(count)
- //        radius = voronoi.GetPointData().GetArray(radiusArrayName).GetTuple1(i)
- //        radiusArray.SetTuple1(count,radius)
- //        count +=1
+	planeFunction11->SetOrigin(plane11origin);
+	planeFunction11->SetNormal(tangent1[0] * -1, tangent1[1] * -1, tangent1[2] * -1);
 
- //  interpolationDataset.SetPoints(interpolationDatasetPoints)
- //  interpolationDataset.SetVerts(interpolationDatasetCellArray)
- //  interpolationDataset.GetPointData().AddArray(radiusArray)
+	vtkNew<vtkPlane> planeFunction12;
+	double plane12origin[3];
+	plane12origin[0] = point1[0] + tangent1[0] * 1.5;
+	plane12origin[1] = point1[1] + tangent1[1] * 1.5;
+	plane12origin[2] = point1[2] + tangent1[2] * 1.5;
 
+	planeFunction12->SetOrigin(plane12origin);
+	planeFunction12->SetNormal(tangent1[0]*1, tangent1[1] * 1, tangent1[2] * 1);
+	
+	// distal 
+	thresholdFilter->ThresholdBetween(1, 1);
+	thresholdFilter->Update();
+
+	double* tangent2 = thresholdFilter->GetOutput()->GetPointData()->GetArray("FrenetTangent")->GetTuple3(0);
+	double tangent2_norm = vtkMath::Norm(tangent2);
+	tangent2[0] = tangent2[0] / tangent2_norm;
+	tangent2[1] = tangent2[1] / tangent2_norm;
+	tangent2[2] = tangent2[2] / tangent2_norm;
+
+	double* point2 = thresholdFilter->GetOutput()->GetPoint(0);
+
+	// create cylinder function 
+	vtkNew<vtkCylinder> cylinderFunction2;
+	cylinderFunction2->SetCenter(point2);
+	cylinderFunction2->SetRadius(thresholdFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(0) *1.5);
+	cylinderFunction2->SetAxis(tangent2);
+
+	// clip planes
+	vtkNew<vtkPlane> planeFunction21;
+	double plane21origin[3];
+	plane21origin[0] = point2[0] - tangent2[0] * 0.5;
+	plane21origin[1] = point2[1] - tangent2[1] * 0.5;
+	plane21origin[2] = point2[2] - tangent2[2] * 0.5;
+
+	planeFunction21->SetOrigin(plane21origin);
+	planeFunction21->SetNormal(tangent2[0] * -1, tangent2[1] * -1, tangent2[2] * -1);
+
+	vtkNew<vtkPlane> planeFunction22;
+	double plane22origin[3];
+	plane22origin[0] = point2[0] + tangent2[0] * 0.5;
+	plane22origin[1] = point2[1] + tangent2[1] * 0.5;
+	plane22origin[2] = point2[2] + tangent2[2] * 0.5;
+
+	planeFunction22->SetOrigin(plane22origin);
+	planeFunction22->SetNormal(tangent2[0] * 1, tangent2[1] * 1, tangent2[2] * 1);
+
+	// evaluate the points
+	// convert clipped voronoi points to vtk data array
+	vtkNew<vtkDoubleArray> proximalMask;
+	proximalMask->SetNumberOfComponents(1);
+	proximalMask->SetNumberOfTuples(m_clippedVoronoiDiagram->GetNumberOfPoints());
+	proximalMask->SetName("Mask");
+	proximalMask->FillComponent(0, 0);
+
+	// combine the masks
+	vtkNew<vtkImplicitBoolean> composeFunction1;
+	composeFunction1->AddFunction(planeFunction11);
+	composeFunction1->AddFunction(planeFunction12);
+	composeFunction1->AddFunction(cylinderFunction1);
+	composeFunction1->SetOperationTypeToIntersection();
+
+	vtkNew<vtkImplicitBoolean> composeFunction2;
+	composeFunction2->AddFunction(planeFunction21);
+	composeFunction2->AddFunction(planeFunction22);
+	composeFunction2->AddFunction(cylinderFunction2);
+	composeFunction2->SetOperationTypeToIntersection();
+
+	vtkNew<vtkImplicitBoolean> composeFunction3;
+	composeFunction3->AddFunction(composeFunction1);
+	composeFunction3->AddFunction(composeFunction2);
+	composeFunction3->SetOperationTypeToUnion();
+	composeFunction3->EvaluateFunction(m_clippedVoronoiDiagram->GetPoints()->GetData(), proximalMask);
+	
+	vtkNew<vtkPolyData> interpolationEnds;
+	interpolationEnds->DeepCopy(m_clippedVoronoiDiagram);
+	interpolationEnds->GetPointData()->AddArray(proximalMask);
+
+	vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+	writer->SetInputData(interpolationEnds);
+	writer->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/output.vtp");
+	writer->Write();
+	std::cout << "save complete" << std::endl;
+
+	return interpolationEnds;
 }
 
 vtkStandardNewMacro(MouseInteractorStylePickCenterline);
