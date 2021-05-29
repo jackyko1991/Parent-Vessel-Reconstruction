@@ -57,6 +57,8 @@ private:
 	double m_comThreshold = 1.5;
 	QList< QPair<vtkActor* ,vtkActor* >> m_clipPlaneActorList;
 	bool m_smoothVoronoiDiagram = false;
+	double m_pointCloudDensity = 200;
+	int m_clippedCenterlinesCount = 1;
 
 	void ClipPlaneUpdate();
 	void CreateClipPlaneActor(vtkUnstructuredGrid*, int, vtkActor*);
