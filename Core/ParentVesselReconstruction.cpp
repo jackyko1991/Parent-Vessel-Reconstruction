@@ -131,19 +131,19 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
-	//this->ComputeVoronoiDiagram();
+	this->ComputeVoronoiDiagram();
 
 	//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
 	//writer->SetInputData(m_voronoiDiagram);
 	//writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/voronoi.vtp");
 	//writer->Write();
 
-	// quick load voronoi diagram for debug
-	vtkSmartPointer<vtkXMLPolyDataReader> readerV = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	//readerV->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\voronoi.vtp");
-	readerV->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
-	readerV->Update();
-	m_voronoiDiagram->DeepCopy(readerV->GetOutput());
+	//// quick load voronoi diagram for debug
+	//vtkSmartPointer<vtkXMLPolyDataReader> readerV = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+	////readerV->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\voronoi.vtp");
+	//readerV->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
+	//readerV->Update();
+	//m_voronoiDiagram->DeepCopy(readerV->GetOutput());
 
 	std::cout << "subdivide centerline..." << std::endl;
 	vtkSmartPointer<vtkSplineFilter> splineFilter = vtkSmartPointer<vtkSplineFilter>::New();
