@@ -34,27 +34,27 @@ public:
 	vtkTypeMacro(MouseInteractorStylePickCenterline, vtkInteractorStyleTrackballCamera);
 
 	void OnKeyPress();
+	void SetReconstructedSurface(vtkPolyData*);
 	void SetCenterline(vtkPolyData* centerline);
+	void SetClippedCenterline(vtkPolyData* clippedCenterline);
 	void SetSphere(vtkSphereSource* sphere);
 	void SetVoronoiDiagram(vtkPolyData* voronoiDiagram);
-	vtkPolyData* GetClippedCenterline();
-	vtkPolyData* GetOutputCenterline();
-	vtkPolyData* GetVoronoiDiagram();
+	void SetClippedVoronoiDiagram(vtkPolyData* clippedVoronoiDiagram);
 
 private:
 	vtkSmartPointer<vtkSphereSource> m_sphere = NULL;
-	vtkPolyData* m_centerline = NULL;
+	vtkSmartPointer<vtkPolyData> m_centerline = NULL;
 	vtkSmartPointer<vtkPolyData> m_clippedCenterline = NULL;
-	vtkSmartPointer<vtkPolyData> m_outputCenterline = NULL;
 	vtkSmartPointer<vtkPolyData> m_voronoiDiagram = NULL;
 	vtkSmartPointer<vtkPolyData> m_clippedVoronoiDiagram = NULL;
-	vtkSmartPointer<vtkPolyData> m_outputVoronoiDiagram = NULL;
 	vtkSmartPointer<vtkPolyData> m_normalized_centerline = NULL;
+	vtkSmartPointer<vtkPolyData> m_reconstructedSurface = NULL;
 	vtkSmartPointer<vtkKdTreePointLocator> m_kDTree = vtkSmartPointer<vtkKdTreePointLocator>::New();
 	
 	int m_pickedPointId = 0;
 	double m_clipDistance = 2.5;
 	double m_comThreshold = 1.5;
+	double m_smoothFactor = 0.4;
 	QList< QPair<vtkActor* ,vtkActor* >> m_clipPlaneActorList;
 	bool m_smoothVoronoiDiagram = false;
 	double m_pointCloudDensity = 200;
@@ -66,7 +66,6 @@ private:
 	void ClipVoronoiDiagram();
 	void InterpoldateVoronoiDiagram();
 	vtkPolyData* ExtractCylindricInterpolationVoronoiDiagram(vtkPolyData*);
-
 };
 
 #endif

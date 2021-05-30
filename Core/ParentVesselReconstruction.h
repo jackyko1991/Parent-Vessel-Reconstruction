@@ -9,6 +9,7 @@
 #include "vtkPolyData.h"
 #include "vtkSmartPointer.h"
 #include <vtkSphereSource.h>
+#include "vtkPolyData.h"
 
 class ParentVesselReconstruction : public QObject
 {
@@ -18,23 +19,25 @@ public:
 	explicit ParentVesselReconstruction(QObject* parent = 0);
 	~ParentVesselReconstruction();
 
-	void SetSourceFilePath(QString);
-	void SetCenterlineFilePath(QString);
-	void SetOutputFilePath(QString);
+	void SetSource(vtkPolyData*);
+	void SetCenterline(vtkPolyData*);
+	vtkPolyData* GetSource();
+	vtkPolyData* GetClippedCenterline();
+	vtkPolyData* GetClippedVoronoiDiagram();
+	vtkPolyData* GetVoronoiDiagram();
+	vtkPolyData* GetCenterline();
+
 	void Run();
 
 private:
 	void SeedPicker();
 	void ComputeVoronoiDiagram();
-	
-	QFileInfo m_sourceFile;
-	QFileInfo m_centerlineFile;
-	QFileInfo m_outputFile;
 
 	vtkSmartPointer<vtkPolyData> m_source = vtkSmartPointer<vtkPolyData>::New() ;
 	vtkSmartPointer<vtkPolyData> m_centerline = vtkSmartPointer<vtkPolyData>::New();
-	vtkSmartPointer<vtkPolyData> m_clipped_centerline = vtkSmartPointer<vtkPolyData>::New();
+	vtkSmartPointer<vtkPolyData> m_clippedCenterline = vtkSmartPointer<vtkPolyData>::New();
 	vtkSmartPointer<vtkPolyData> m_voronoiDiagram = vtkSmartPointer<vtkPolyData>::New();
+	vtkSmartPointer<vtkPolyData> m_clippedVoronoiDiagram = vtkSmartPointer<vtkPolyData>::New();
 	vtkSmartPointer<vtkSphereSource > m_sphere = vtkSmartPointer<vtkSphereSource>::New();
 };
 

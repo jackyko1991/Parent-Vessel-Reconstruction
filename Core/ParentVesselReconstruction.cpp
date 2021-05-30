@@ -3,10 +3,6 @@
 #include <QFile>
 
 // vtk
-#include "vtkSTLReader.h"
-#include "vtkXMLPolyDataReader.h"
-#include "vtkPolyDataReader.h"
-#include "observe_error.h""
 #include "vtkCleanPolyData.h"
 #include "vtkTriangleFilter.h"
 #include "vtkPolyDataMapper.h"
@@ -25,6 +21,9 @@
 #include "vtkvmtkVoronoiDiagram3D.h"
 #include "vtkvmtkSimplifyVoronoiDiagram.h"
 
+#include "vtkXMLPolyDataReader.h"
+
+
 // me
 #include "interactorStylePickCenterline.h"
 
@@ -38,85 +37,43 @@ ParentVesselReconstruction::~ParentVesselReconstruction()
 
 }
 
-void ParentVesselReconstruction::SetSourceFilePath(QString path)
+void ParentVesselReconstruction::SetSource(vtkPolyData *source)
 {
-	m_sourceFile.setFile(path);
+	m_source->DeepCopy(source);
 }
 
-void ParentVesselReconstruction::SetCenterlineFilePath(QString path)
+void ParentVesselReconstruction::SetCenterline(vtkPolyData *centerline)
 {
-	m_centerlineFile.setFile(path);
+	m_centerline->DeepCopy(centerline);
 }
 
-void ParentVesselReconstruction::SetOutputFilePath(QString path)
+vtkPolyData * ParentVesselReconstruction::GetSource()
 {
-	m_outputFile.setFile(path);
+	return m_source;
+}
+
+vtkPolyData * ParentVesselReconstruction::GetClippedCenterline()
+{
+	return m_clippedCenterline;
+}
+
+vtkPolyData * ParentVesselReconstruction::GetClippedVoronoiDiagram()
+{
+	return m_clippedVoronoiDiagram;
+}
+
+vtkPolyData * ParentVesselReconstruction::GetVoronoiDiagram()
+{
+	return m_voronoiDiagram;
+}
+
+vtkPolyData * ParentVesselReconstruction::GetCenterline()
+{
+	return m_centerline;
 }
 
 void ParentVesselReconstruction::Run()
 {
-	// check input file existence
-	if (!m_sourceFile.exists())
-	{
-		std::cout << "Source file not exist!!!" << std::endl;
-		return;
-	}
-
-	// read surface
-	vtkSmartPointer<ErrorObserver> errorObserver = vtkSmartPointer<ErrorObserver>::New();
-
-	if (m_sourceFile.suffix() == "vtp" || m_sourceFile.suffix() == "VTP")
-	{
-		vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-		reader->SetFileName(m_sourceFile.absoluteFilePath().toStdString().c_str());
-		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
-		reader->Update();
-		m_source->DeepCopy(reader->GetOutput());
-	}
-	else if (m_sourceFile.suffix() == "stl" || m_sourceFile.suffix() == "STL")
-	{
-		vtkSmartPointer<vtkSTLReader> reader = vtkSmartPointer<vtkSTLReader>::New();
-		reader->SetFileName(m_sourceFile.absoluteFilePath().toStdString().c_str());
-		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
-		reader->Update();
-		m_source->DeepCopy(reader->GetOutput());
-
-	}
-	else if (m_sourceFile.suffix() == "vtk" || m_sourceFile.suffix() == "VTK")
-	{
-		vtkSmartPointer<vtkPolyDataReader> reader = vtkSmartPointer<vtkPolyDataReader>::New();
-		reader->SetFileName(m_sourceFile.absoluteFilePath().toStdString().c_str());
-		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
-		m_source->DeepCopy(reader->GetOutput());
-	}
-	else
-	{
-		std::cerr << "Invalid input data type, only accept STL, VTP or VTK files" << std::endl;
-		return;
-	}
-
-	// read centerline
-	if (m_centerlineFile.suffix() == "vtp" || m_centerlineFile.suffix() == "VTP")
-	{
-		vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-		reader->SetFileName(m_centerlineFile.absoluteFilePath().toStdString().c_str());
-		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
-		reader->Update();
-		m_centerline->DeepCopy(reader->GetOutput());
-	}
-	else if (m_centerlineFile.suffix() == "vtk" || m_centerlineFile.suffix() == "VTK")
-	{
-		vtkSmartPointer<vtkPolyDataReader> reader = vtkSmartPointer<vtkPolyDataReader>::New();
-		reader->SetFileName(m_sourceFile.absoluteFilePath().toStdString().c_str());
-		reader->AddObserver(vtkCommand::ErrorEvent, errorObserver);
-		m_centerline->DeepCopy(reader->GetOutput());
-	}
-	else
-	{
-		std::cerr << "Invalid centerline data type, only accept VTP or VTK files" << std::endl;
-		return;
-	}
-
 	std::cout << "capping input surface..." << std::endl;
 	// capping
 	vtkSmartPointer<vtkCleanPolyData> cleaner = vtkSmartPointer<vtkCleanPolyData>::New();
@@ -131,19 +88,14 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
-	this->ComputeVoronoiDiagram();
+	// quick load voronoi diagram for debug
+	vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\clipped_voronoi.vtp");
+	reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
+	reader->Update();
+	m_voronoiDiagram->DeepCopy(reader->GetOutput());
 
-	//vtkSmartPointer <vtkXMLPolyDataWriter> writer = vtkSmartPointer <vtkXMLPolyDataWriter>::New();
-	//writer->SetInputData(m_voronoiDiagram);
-	//writer->SetFileName("Z:/data/intracranial/data_ESASIS_followup/medical/055/baseline/voronoi.vtp");
-	//writer->Write();
-
-	//// quick load voronoi diagram for debug
-	//vtkSmartPointer<vtkXMLPolyDataReader> readerV = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	////readerV->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\voronoi.vtp");
-	//readerV->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
-	//readerV->Update();
-	//m_voronoiDiagram->DeepCopy(readerV->GetOutput());
+	//this->ComputeVoronoiDiagram();
 
 	std::cout << "subdivide centerline..." << std::endl;
 	vtkSmartPointer<vtkSplineFilter> splineFilter = vtkSmartPointer<vtkSplineFilter>::New();
@@ -154,8 +106,6 @@ void ParentVesselReconstruction::Run()
 
 	m_centerline->DeepCopy(splineFilter->GetOutput());
 
-	std::cout << "picking clip center..." << std::endl;
-
 	this->SeedPicker();
 }
 
@@ -163,6 +113,7 @@ void ParentVesselReconstruction::SeedPicker()
 {
 	vtkSmartPointer<vtkPolyDataMapper> surfaceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
 	surfaceMapper->SetInputData(m_source);
+	surfaceMapper->SetScalarVisibility(false);
 	vtkSmartPointer<vtkActor> surfaceActor = vtkSmartPointer<vtkActor>::New();
 	surfaceActor->SetMapper(surfaceMapper);
 	surfaceActor->GetProperty()->SetOpacity(0.3);
@@ -199,8 +150,11 @@ void ParentVesselReconstruction::SeedPicker()
 	iren->SetRenderWindow(renWin);
 	iren->SetInteractorStyle(style);
 	style->SetCenterline(m_centerline);
+	style->SetClippedCenterline(m_clippedCenterline);
 	style->SetSphere(m_sphere);
 	style->SetVoronoiDiagram(m_voronoiDiagram);
+	style->SetClippedVoronoiDiagram(m_clippedVoronoiDiagram);
+	style->SetReconstructedSurface(m_source);
 
 	iren->Initialize();
 	renWin->Render();
@@ -261,13 +215,13 @@ void ParentVesselReconstruction::ComputeVoronoiDiagram()
 
 	vtkSmartPointer<vtkvmtkVoronoiDiagram3D> voronoiDiagramFilter = vtkSmartPointer<vtkvmtkVoronoiDiagram3D>::New();
 	voronoiDiagramFilter->SetInputData(delaunayTessellation);
-	voronoiDiagramFilter->SetRadiusArrayName("MaximumInscribedSphereRadius");
+	voronoiDiagramFilter->SetRadiusArrayName("Radius");
 	voronoiDiagramFilter->Update();
 
 	std::cout << "simplifying Voronoi diagram..." << std::endl;
 
 	vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram> voronoiDiagramSimplifier = vtkSmartPointer<vtkvmtkSimplifyVoronoiDiagram>::New();
-	voronoiDiagramSimplifier->SetInputConnection(voronoiDiagramFilter->GetOutputPort());
+	voronoiDiagramSimplifier->SetInputData(voronoiDiagramFilter->GetOutput());
 	voronoiDiagramSimplifier->SetUnremovablePointIds(voronoiDiagramFilter->GetPoleIds());
 	voronoiDiagramSimplifier->Update();
 
