@@ -88,14 +88,14 @@ void ParentVesselReconstruction::Run()
 
 	m_source->DeepCopy(triangulator->GetOutput());
 
-	// quick load voronoi diagram for debug
-	vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\clipped_voronoi.vtp");
-	reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
-	reader->Update();
-	m_voronoiDiagram->DeepCopy(reader->GetOutput());
+	 //quick load voronoi diagram for debug
+	 vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+	 reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\recon\\voronoi.vtp");
+	 //reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
+	 reader->Update();
+	 m_voronoiDiagram->DeepCopy(reader->GetOutput());
 
-	//this->ComputeVoronoiDiagram();
+	// this->ComputeVoronoiDiagram();
 
 	std::cout << "subdivide centerline..." << std::endl;
 	vtkSmartPointer<vtkSplineFilter> splineFilter = vtkSmartPointer<vtkSplineFilter>::New();
