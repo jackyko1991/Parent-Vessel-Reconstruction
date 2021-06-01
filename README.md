@@ -3,7 +3,7 @@ An objective approach to digital removal of vascular aneurysms.
 
 This is the C++ implementation of [VMTK PARENT VESSEL RECONSTRUCTION](http://www.vmtk.org/tutorials/ParentVesselReconstruction.html). The main objective of the software is to reconstruct parent vessel from aneurysm one. Detail theory can be found from [Ford's publication](https://www.birpublications.org/doi/epub/10.1259/bjr/67593727)
 
-**Note: Clipping section now is identified manually with given clipping center and length for robustness**
+**Note: Clipping section now is identified manually with given clipping center and length for robustness. Only forward centerline is required for both lateral and bifurcation type aneurysm.**
 
 ## Usage
 Example usage: `./Parent-Vessel-Reconstruction.exe <vessel-surface-path> <centerline-path> <output-directory>`
