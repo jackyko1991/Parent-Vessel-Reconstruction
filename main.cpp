@@ -32,6 +32,18 @@ int main(int argc, char** argv)
 	QCommandLineOption intermediateFilesOption("i", QCoreApplication::translate("main", "Save intermediate files"));
 	parser.addOption(intermediateFilesOption);
 
+	QCommandLineOption smoothOption(QStringList() << "s" << "smooth",
+		QCoreApplication::translate("main", "Voronoi diagram smooth factor between 0 and 1 (default=0.6)"),
+		QCoreApplication::translate("main", "smooth"),
+		"0.6");
+	parser.addOption(smoothOption);
+
+	QCommandLineOption distanceOption(QStringList() << "d" << "distance",
+		QCoreApplication::translate("main", "Distance between picked point and independent centerline center of mass. (default=1.5)"),
+		QCoreApplication::translate("main", "dist"),
+		"0.6");
+	parser.addOption(distanceOption);
+
 	parser.process(app);
 	const QStringList args = parser.positionalArguments();
 
@@ -116,6 +128,8 @@ int main(int argc, char** argv)
 	ParentVesselReconstruction pvr;
 	pvr.SetSource(source);
 	pvr.SetCenterline(centerline);
+	pvr.SetVoronoiSmooth(parser.value(smoothOption).toDouble());
+	pvr.SetCenterOfMassThreshold(parser.value(distanceOption).toDouble());
 	pvr.Run();
 
 	// the 3rd argument is save director

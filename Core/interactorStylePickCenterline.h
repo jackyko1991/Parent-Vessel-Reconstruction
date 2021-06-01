@@ -40,6 +40,8 @@ public:
 	void SetSphere(vtkSphereSource* sphere);
 	void SetVoronoiDiagram(vtkPolyData* voronoiDiagram);
 	void SetClippedVoronoiDiagram(vtkPolyData* clippedVoronoiDiagram);
+	void SetVoronoiSmoothFactor(double);
+	void SetCenterOfMassThreshold(double);
 
 private:
 	vtkSmartPointer<vtkSphereSource> m_sphere = NULL;
@@ -54,10 +56,10 @@ private:
 	int m_pickedPointId = 0;
 	double m_clipDistance = 2.5;
 	double m_comThreshold = 1.5;
-	double m_smoothFactor = 0.4;
+	double m_smoothFactor = 0.6;
 	QList< QPair<vtkActor* ,vtkActor* >> m_clipPlaneActorList;
 	bool m_smoothVoronoiDiagram = false;
-	double m_pointCloudDensity = 200;
+	double m_pointCloudDensity = 10;
 	int m_clippedCenterlinesCount = 1;
 
 	void ClipPlaneUpdate();

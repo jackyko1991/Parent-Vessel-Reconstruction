@@ -47,6 +47,16 @@ void ParentVesselReconstruction::SetCenterline(vtkPolyData *centerline)
 	m_centerline->DeepCopy(centerline);
 }
 
+void ParentVesselReconstruction::SetVoronoiSmooth(double smooth)
+{
+	m_voronoiSmooth = smooth;
+}
+
+void ParentVesselReconstruction::SetCenterOfMassThreshold(double thres)
+{
+	m_comThreshold = thres;
+}
+
 vtkPolyData * ParentVesselReconstruction::GetSource()
 {
 	return m_source;
@@ -89,13 +99,13 @@ void ParentVesselReconstruction::Run()
 	m_source->DeepCopy(triangulator->GetOutput());
 
 	 //quick load voronoi diagram for debug
-	 vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-	 reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\recon\\voronoi.vtp");
-	 //reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
-	 reader->Update();
-	 m_voronoiDiagram->DeepCopy(reader->GetOutput());
+	 //vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+	 //reader->SetFileName("Z:\\data\\intracranial\\data_ESASIS_followup\\medical\\055\\baseline\\recon\\voronoi.vtp");
+	 ////reader->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/voronoi.vtp");
+	 //reader->Update();
+	// m_voronoiDiagram->DeepCopy(reader->GetOutput());
 
-	// this->ComputeVoronoiDiagram();
+	this->ComputeVoronoiDiagram();
 
 	std::cout << "subdivide centerline..." << std::endl;
 	vtkSmartPointer<vtkSplineFilter> splineFilter = vtkSmartPointer<vtkSplineFilter>::New();
@@ -155,6 +165,8 @@ void ParentVesselReconstruction::SeedPicker()
 	style->SetVoronoiDiagram(m_voronoiDiagram);
 	style->SetClippedVoronoiDiagram(m_clippedVoronoiDiagram);
 	style->SetReconstructedSurface(m_source);
+	style->SetVoronoiSmoothFactor(m_voronoiSmooth);
+	style->SetCenterOfMassThreshold(m_comThreshold);
 
 	iren->Initialize();
 	renWin->Render();
@@ -199,7 +211,7 @@ void ParentVesselReconstruction::ComputeVoronoiDiagram()
 	internalTetrahedraExtractor->SetInputData(delaunayTessellation);
 	internalTetrahedraExtractor->SetOutwardNormalsArrayName(normalsArray->GetName());
 	internalTetrahedraExtractor->RemoveSubresolutionTetrahedraOn();
-	internalTetrahedraExtractor->SetSubresolutionFactor(1.0);
+	internalTetrahedraExtractor->SetSubresolutionFactor(1e-2); //1.0
 	internalTetrahedraExtractor->SetSurface(surfaceNormals->GetOutput());
 
 	if (capper->GetCapCenterIds()->GetNumberOfIds() > 0)

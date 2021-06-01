@@ -21,6 +21,8 @@ public:
 
 	void SetSource(vtkPolyData*);
 	void SetCenterline(vtkPolyData*);
+	void SetVoronoiSmooth(double);
+	void SetCenterOfMassThreshold(double);
 	vtkPolyData* GetSource();
 	vtkPolyData* GetClippedCenterline();
 	vtkPolyData* GetClippedVoronoiDiagram();
@@ -33,6 +35,8 @@ private:
 	void SeedPicker();
 	void ComputeVoronoiDiagram();
 
+	double m_voronoiSmooth = 0.6;
+	double m_comThreshold = 1.5;
 	vtkSmartPointer<vtkPolyData> m_source = vtkSmartPointer<vtkPolyData>::New() ;
 	vtkSmartPointer<vtkPolyData> m_centerline = vtkSmartPointer<vtkPolyData>::New();
 	vtkSmartPointer<vtkPolyData> m_clippedCenterline = vtkSmartPointer<vtkPolyData>::New();

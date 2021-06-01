@@ -26,6 +26,7 @@
 #include "vtkPointSource.h"
 #include "vtkMarchingCubes.h"
 #include "vtkVoronoiKernel.h"
+#include "vtkLinearKernel.h"
 #include "vtkSplineFilter.h"
 
 #include "vtkvmtkPolyBallLine.h"
@@ -165,6 +166,16 @@ void MouseInteractorStylePickCenterline::SetClippedVoronoiDiagram(vtkPolyData * 
 	m_clippedVoronoiDiagram = clippedVoronoiDiagram;
 }
 
+void MouseInteractorStylePickCenterline::SetVoronoiSmoothFactor(double smooth)
+{
+	m_smoothFactor = smooth;
+}
+
+void MouseInteractorStylePickCenterline::SetCenterOfMassThreshold(double thres)
+{
+	m_comThreshold = thres;
+}
+
 void MouseInteractorStylePickCenterline::ClipPlaneUpdate()
 {
 	int iD = m_pickedPointId;
@@ -208,7 +219,7 @@ void MouseInteractorStylePickCenterline::ClipPlaneUpdate()
 	}
 
 	// loop over all centerlineids
-	for (int i = 0; i < clipper1->GetOutput()->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]; i++)
+	for (int i = 0; i < clipper1->GetOutput()->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1; i++)
 	{
 		// threshold to get independent lines
 		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
@@ -315,7 +326,7 @@ void MouseInteractorStylePickCenterline::ClipCenterline()
 	vtkSmartPointer<vtkAppendPolyData> appendFilter = vtkSmartPointer<vtkAppendPolyData>::New();
 	appendFilter->AddInputData(interpolatedCenterline);
 
-	for (int i = 0; i < m_normalized_centerline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]; i++)
+	for (int i = 0; i < m_normalized_centerline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1; i++)
 	{
 		// threshold to get independent lines
 		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
@@ -335,7 +346,7 @@ void MouseInteractorStylePickCenterline::ClipCenterline()
 		vtkSmartPointer<vtkPolyData> singleCenterline = geometryFilter->GetOutput();
 		singleCenterline->GetPointData()->SetActiveScalars("NormalizedAbscissas");
 
-		// compute section to clip and determine if the centroid is close enought
+		// compute section to clip and determine if the centroid is close enough
 		vtkSmartPointer<vtkClipPolyData> clipper1 = vtkSmartPointer<vtkClipPolyData>::New();
 		clipper1->SetValue(threshold_bound[1]);
 		clipper1->SetInsideOut(true);
@@ -480,7 +491,7 @@ void MouseInteractorStylePickCenterline::ClipVoronoiDiagram()
 	vtkNew<vtkImplicitBoolean> endSpheresFunction;
 	endSpheresFunction->SetOperationTypeToUnion();
 
-	for (int i = 0; i < m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]; i++)
+	for (int i = 0; i < m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1; i++)
 	{
 		// threshold to get independent centerlineids
 		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
@@ -620,23 +631,32 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 {
 	vtkNew<vtkVoronoiKernel> voronoiKernel;
 
-	// interpolate the radius value using clipped voronoi
+	//// interpolate the radius value using clipped voronoi
+	//vtkNew<vtkLinearKernel> linearKernel;
+	//linearKernel->SetRadius(m_clippedCenterline->GetPointData()->GetArray("Radius")->GetRange()[1]);
+	//std::cout << "linear kernel radius for centerline interpolation: " << linearKernel->GetRadius() << std::endl;
+
 	vtkNew<vtkPointInterpolator> interpolator;
 	interpolator->SetKernel(voronoiKernel);
+	//interpolator->SetKernel(linearKernel);
 	interpolator->SetInputData(m_centerline);
 	interpolator->SetSourceData(m_clippedVoronoiDiagram);
 	interpolator->Update();
 	m_centerline->DeepCopy(interpolator->GetOutput());
 
 	vtkNew<vtkPolyData> newPoints;
+	vtkNew<vtkPolyData> tmp;
+	tmp->DeepCopy(m_clippedVoronoiDiagram);
 
 	float progress = 0.0;
 	const clock_t begin_time = std::clock();
 
 	// loop over independent centerlineids
-	for (int i = 0; i < m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]; i++)
+	for (int i = 0; i < m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1; i++)
 	{
 		// progress bar
+		progress = (i + 1)*1.0 / (m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1);
+
 		int barWidth = 30;
 
 		float elapsed_time = float(clock() - begin_time) / CLOCKS_PER_SEC;
@@ -647,7 +667,7 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 		sprintf(et, "%.2f", elapsed_time);
 		sprintf(rt, "%.2f", remain_time);
 
-		std::cout << i << "/" << m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1] << "[";
+		std::cout << i+1 << "/" << m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetRange()[1]+1 << "[";
 		int pos = barWidth * progress;
 		for (int i = 0; i < barWidth; ++i) {
 			if (i < pos) std::cout << "=";
@@ -656,11 +676,9 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 		}
 		std::cout << "] " << int(progress * 100.0) << "% "
 			<< "Elapsed Time: " << et << "s "
-			<< "Remaining Time:" << rt << "s "
+			<< "Remaining Time:" << rt << "s"
 			<< "\r";
 		std::cout.flush();
-
-		progress = (i + 1)*1.0 / m_clippedCenterline->GetCellData()->GetArray("CenterlineIds")->GetNumberOfTuples();
 
 		// threshold to get independent lines
 		vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
@@ -676,9 +694,6 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 		geomFilter->SetInputData(threshold->GetOutput());
 		geomFilter->Update();
 
-		// prepare interpolate input
-		vtkPolyData* interpolationEnds = this->ExtractCylindricInterpolationVoronoiDiagram(geomFilter->GetOutput());
-
 		// perform connectivity to get proximal and distal centerlines
 		vtkNew<vtkConnectivityFilter> connectFilter;
 		connectFilter->SetInputData(geomFilter->GetOutput());
@@ -686,8 +701,13 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 		connectFilter->SetColorRegions(true);
 		connectFilter->Update();
 
+		//std::cout << "centerlineid:" << i << " number of connected regions: " << connectFilter->GetNumberOfExtractedRegions() << std::endl;
+
 		if (connectFilter->GetNumberOfExtractedRegions() != 2)
 			continue;
+
+		// prepare interpolate input
+		vtkPolyData* interpolationEnds = this->ExtractCylindricInterpolationVoronoiDiagram(geomFilter->GetOutput());
 
 		vtkNew<vtkThreshold> thresholdFilter;
 		thresholdFilter->SetInputData(connectFilter->GetOutput());
@@ -741,30 +761,18 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 		int startId = centerlineLoactor->FindClosestPoint(startPoint);
 		int endId = centerlineLoactor->FindClosestPoint(endPoint);
 
-		std::cout << "centerlineids: " << i << std::endl;
-		std::cout << "startpoint id: " << startId << std::endl;
-		std::cout << "startpoint: " << startPoint[0] << " " << endPoint[1] << " " << endPoint[2] << std::endl;
-		std::cout << "startpoint on centerline: "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(startId)[0] << " "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(startId)[1] << " "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(startId)[2] << std::endl;
-
-		std::cout << "endpoint id: " << endId << std::endl;
-		std::cout << "endpoint: " << endPoint[0] << " " << endPoint[1] << " " << endPoint[2] << std::endl;
-		std::cout << "endpoint on centerline: "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(endId)[0] << " "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(endId)[1] << " "
-			<< centerlineGeomFilter->GetOutput()->GetPoint(endId)[2] << std::endl;
-
 		for (int j = startId; j < endId; j++)
 		{
 			// point cloud density update
-			int numberOfPoints = 4. / 3.*vtkMath::Pi()* pow(centerlineGeomFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(j), 3)* m_pointCloudDensity;
+			//double overlap_correction = 0.001;
+			double overlap_correction = 1;
+			int numberOfPoints = 4. / 3.*vtkMath::Pi()* pow(centerlineGeomFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(j), 3)* m_pointCloudDensity*overlap_correction;
 
 			double centerpointAbscissas = centerlineGeomFilter->GetOutput()->GetPointData()->GetArray("Abscissas")->GetTuple1(j);
 			// linear interpolation
-			double centerpointRadius = startPointRadius + (centerpointAbscissas - startPointAbscissas) * (endPointRadius - startPointRadius) / (endPointAbscissas - startPointAbscissas);
+			//double centerpointRadius = startPointRadius + (centerpointAbscissas - startPointAbscissas) * (endPointRadius - startPointRadius) / (endPointAbscissas - startPointAbscissas);
 
+			double centerpointRadius = centerlineGeomFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(j)*(1. - m_smoothFactor);
 			//std::cout << "i: " << i << " j: " << j
 			//	<< " radius: " << centerpointRadius 
 			//	<< " centerpointAbscissas: " << centerpointAbscissas << " startpointAbscissas: " << startPointAbscissas << " endpointAbscissas: " <<endPointAbscissas 
@@ -772,8 +780,7 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 
 			vtkNew<vtkPointSource> pointSource;
 			pointSource->SetCenter(centerlineGeomFilter->GetOutput()->GetPoint(j));
-			pointSource->SetRadius(centerlineGeomFilter->GetOutput()->GetPointData()->GetArray("Radius")->GetTuple1(j)*(1. - m_smoothFactor));
-			//pointSource->SetRadius(centerpointRadius);
+			pointSource->SetRadius(centerpointRadius);
 			pointSource->SetNumberOfPoints(numberOfPoints); //may need to change to adaptive point cloud density
 			pointSource->Update();
 
@@ -786,18 +793,29 @@ void MouseInteractorStylePickCenterline::InterpoldateVoronoiDiagram()
 	}
 	std::cout << std::endl;
 
-
 	// interpolate the radius value to new point cloud
+	double kernelRadius = (
+		(newPoints->GetBounds()[1] - newPoints->GetBounds()[0]) +
+		(newPoints->GetBounds()[3] - newPoints->GetBounds()[2]) +
+		(newPoints->GetBounds()[5] - newPoints->GetBounds()[4])
+		) / 3;
+
+	std::cout << "linear kernel radius = " << kernelRadius << std::endl;
+	vtkNew<vtkLinearKernel> linearKernel1;
+	linearKernel1->SetRadius(kernelRadius);
+	interpolator->SetKernel(linearKernel1);
 	interpolator->SetInputData(newPoints);
-	interpolator->SetSourceData(m_clippedVoronoiDiagram);
+	interpolator->SetSourceData(tmp);
 	interpolator->Update();
 
 	// merge the new points with the clipped voronoi diagram
 	vtkNew<vtkAppendPolyData> outputAppend;
-	outputAppend->AddInputData(m_clippedVoronoiDiagram);
+	outputAppend->AddInputData(tmp);
 	outputAppend->AddInputDataObject(interpolator->GetOutput());
 	outputAppend->Update();
 
+	//tmp->DeepCopy(outputAppend->GetOutput());
+	
 	m_voronoiDiagram->DeepCopy(outputAppend->GetOutput());
 }
 
@@ -960,10 +978,7 @@ vtkPolyData* MouseInteractorStylePickCenterline::ExtractCylindricInterpolationVo
 		(cleaner2->GetOutput()->GetBounds()[5] - cleaner2->GetOutput()->GetBounds()[4]);
 	double density2 = cleaner2->GetOutput()->GetNumberOfPoints() / vol2;
 
-	// square to sphere
-	double density_correction_factor = 1./(vtkMath::Pi() / 6.);
-
-	//m_pointCloudDensity = (density1 + density2) / 2*density_correction_factor;
+	// m_pointCloudDensity = (density1 + density2) / 2;
 
 	// combine the masks
 	vtkNew<vtkImplicitBoolean> composeFunction3;
