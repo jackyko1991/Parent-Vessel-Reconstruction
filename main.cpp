@@ -153,13 +153,13 @@ int main(int argc, char** argv)
 
 	writer->SetInputData(pvr.GetClippedCenterline());
 	outputName = outputDir.absolutePath() + "/centerline_patched.vtp";
-
 	writer->SetFileName(outputName.toStdString().c_str());
 	writer->Write();
-	//
-	//writer->SetInputData(pvr.GetSource());
-	//writer->SetFileName("D:/Projects/Parent-Vessel-Reconstruction/Data/surface_reconstructed.vtp");
-	//writer->Write();
+	
+	writer->SetInputData(pvr.GetSource());
+	outputName = outputDir.absolutePath() + "/source_recon.vtp";
+	writer->SetFileName(outputName.toStdString().c_str());
+	writer->Write();
 
 	std::cout << "save complete" << std::endl;
 }
