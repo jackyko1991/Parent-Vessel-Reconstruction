@@ -20,7 +20,7 @@ In `output-directory` following files will be delivered if reconstruction is suc
 - voronoi_clipped.vtp (clipped Voronoi diagram for interpolation input)
 - voronoi_recon.vtp (Voronoi diagram used for parent vessel reconstruction)
 
-**Note: centerline_interpolate.vtp does not provide sufficiently correct information of the reconstructed parent vessels. We recommend to recompute the centerline again for the output surface for exact geometry data.**
+**Note: centerline_interpolate.vtp does not provide sufficiently correct information of the reconstructed parent vessels. We recommend to recompute the centerline again for the output surface to exact geometry data.**
 
 Use `-h` command to list detail usage:
 ```bash
